@@ -16494,19 +16494,38 @@ Would you like to continue with {distro_name} anyway?"""
             self.end_operation()
 
     def _apply_auto_dpi_on_main_thread(self):
-        """Auto-configure Affinity DPI scaling based on the host display scale
-        (used during one-click setup). Writes HKEY_CURRENT_USER\\Control
-        Panel\\Desktop\\LogPixels via wine reg."""
+        """Auto-configure Affinity DPI scaling based on the host display
+        resolution and scale factor (used during one-click setup). Writes
+        HKEY_CURRENT_USER\\Control Panel\\Desktop\\LogPixels via wine reg."""
         try:
             screen = QApplication.primaryScreen()
             if screen is None:
-                self.log("Could not detect primary screen; skipping auto DPI", "warning")
+                self.log(
+                    "Could not detect primary screen; skipping auto DPI", "warning"
+                )
                 return
             dpr = screen.devicePixelRatio() or 1.0
-            recommended = max(96, min(480, int(round((96.0 * dpr) / 12.0)) * 12))
+            geo = screen.geometry()
+            phys_w = int(geo.width() * dpr)
+            phys_h = int(geo.height() * dpr)
+
+            # Resolution-based recommendation (mirrors the dialog's common values table)
+            if phys_w >= 3840 or phys_h >= 2160:
+                res_dpi = 192
+            elif phys_w >= 2560 or phys_h >= 1440:
+                res_dpi = 144
+            elif phys_w >= 1920 or phys_h >= 1080:
+                res_dpi = 96
+            else:
+                res_dpi = 96
+
+            # OS-scale-based recommendation (96 per 100% host scale, snapped to slider steps)
+            scale_dpi = max(96, min(480, int(round((96.0 * dpr) / 12.0)) * 12))
+
+            recommended = max(res_dpi, scale_dpi)
             percentage = int(round((recommended / 96.0) * 100))
             self.log(
-                f"Detected host scale {dpr:.2f}x -> auto DPI {recommended} ({percentage}%)",
+                f"Auto DPI detected: {phys_w}x{phys_h} at {dpr:.2f}x scale -> DPI {recommended} ({percentage}%)",
                 "info",
             )
 
@@ -16647,14 +16666,6 @@ Would you like to continue with {distro_name} anyway?"""
         dialog.setMaximumWidth(max_width)
         dialog.setMaximumHeight(max_height)
         dialog.resize(default_width, default_height)
-
-        # Ensure the dialog is tall enough to show all content; clamp inside max.
-        hint = dialog.sizeHint()
-        target_w = min(max(default_width, hint.width()), max_width)
-        target_h = min(max(default_height, hint.height()), max_height)
-        target_w = max(target_w, min_width)
-        target_h = max(target_h, min_height)
-        dialog.resize(target_w, target_h)
         dialog.setSizeGripEnabled(True)
         dialog.setStyleSheet(self.get_dialog_stylesheet())
 
@@ -16747,6 +16758,14 @@ Would you like to continue with {distro_name} anyway?"""
         button_layout.addWidget(save_btn)
 
         main_layout.addLayout(button_layout)
+
+        # Ensure the dialog is large enough to show all content; clamp inside min/max.
+        hint = dialog.sizeHint()
+        target_w = min(max(default_width, hint.width()), max_width)
+        target_h = min(max(default_height, hint.height()), max_height)
+        target_w = max(target_w, min_width)
+        target_h = max(target_h, min_height)
+        dialog.resize(target_w, target_h)
 
         # Show dialog
         dialog.show()
