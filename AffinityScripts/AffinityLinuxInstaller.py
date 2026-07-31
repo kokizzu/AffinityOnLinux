@@ -6085,7 +6085,9 @@ class AffinityInstallerGUI(QMainWindow):
         main_layout.addWidget(title_label)
 
         # Description
-        desc_label = QLabel(
+        desc_label = QLabel()
+        desc_label.setTextFormat(Qt.TextFormat.RichText)
+        desc_label.setText(
             "Please choose your preferred graphics backend:\n\n"
             "• <b>vkd3d</b> - Includes OpenCL support for hardware acceleration\n"
             "• <b>DXVK</b> - Hardware accelerated, uses the GPU (no OpenCL)\n\n"
@@ -6093,7 +6095,6 @@ class AffinityInstallerGUI(QMainWindow):
         )
         desc_label.setObjectName("descriptionLabel")
         desc_label.setWordWrap(True)
-        desc_label.setTextFormat(Qt.TextFormat.RichText)
         desc_label.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum
         )
