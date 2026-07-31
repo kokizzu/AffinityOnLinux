@@ -13066,6 +13066,7 @@ Would you like to continue with {distro_name} anyway?"""
                     )
 
                 display_name = {
+                    "Add": "Affinity (Unified)",
                     "Photo": "Affinity Photo",
                     "Designer": "Affinity Designer",
                     "Publisher": "Affinity Publisher",
@@ -13625,12 +13626,18 @@ Would you like to continue with {distro_name} anyway?"""
 
             self.update_progress(1.0)
             self.update_progress_text("Installation complete!")
-            self.log(f"\n✓ {app_name} installation completed!", "success")
+            display_name = {
+                "Add": "Affinity (Unified)",
+                "Photo": "Affinity Photo",
+                "Designer": "Affinity Designer",
+                "Publisher": "Affinity Publisher",
+            }.get(app_name, app_name)
+            self.log(f"\n✓ {display_name} installation completed!", "success")
             self.log("You can now launch it from your application menu.", "info")
 
             self.show_message(
                 "Installation Complete",
-                f"{app_name} has been successfully installed!\n\n"
+                f"{display_name} has been successfully installed!\n\n"
                 "You can launch it from your application menu.",
                 "info",
             )
