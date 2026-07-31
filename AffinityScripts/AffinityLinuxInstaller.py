@@ -308,6 +308,7 @@ class AffinityInstallerGUI(QMainWindow):
     refresh_status_signal = pyqtSignal()
     show_main_menu_signal = pyqtSignal()
     window_icon_signal = pyqtSignal(str)
+    apply_auto_dpi_signal = pyqtSignal()
 
     def __init__(self):
         startup_start = time.time()
@@ -390,6 +391,7 @@ class AffinityInstallerGUI(QMainWindow):
         self.refresh_status_signal.connect(self.check_installation_status)
         self.show_main_menu_signal.connect(self.show_main_menu)
         self.window_icon_signal.connect(self._set_window_icon_safe)
+        self.apply_auto_dpi_signal.connect(self._apply_auto_dpi_on_main_thread)
         step_start = log_timing("Signal connections", step_start)
 
         self.create_ui()
@@ -7499,6 +7501,14 @@ class AffinityInstallerGUI(QMainWindow):
             return
 
         self.setup_wine(wine_version_choice)
+
+        if self.check_cancelled():
+            return
+
+        # Auto-configure Affinity DPI scaling based on host display resolution.
+        # Runs on the GUI thread via signal so it is safe under Wayland/Qt.
+        self.update_progress_text("Step 3.5/5: Auto-configuring DPI scaling for your display...")
+        self.apply_auto_dpi_signal.emit()
 
         if self.check_cancelled():
             return
@@ -16483,6 +16493,61 @@ Would you like to continue with {distro_name} anyway?"""
         finally:
             self.end_operation()
 
+    def _apply_auto_dpi_on_main_thread(self):
+        """Auto-configure Affinity DPI scaling based on the host display scale
+        (used during one-click setup). Writes HKEY_CURRENT_USER\\Control
+        Panel\\Desktop\\LogPixels via wine reg."""
+        try:
+            screen = QApplication.primaryScreen()
+            if screen is None:
+                self.log("Could not detect primary screen; skipping auto DPI", "warning")
+                return
+            dpr = screen.devicePixelRatio() or 1.0
+            recommended = max(96, min(480, int(round((96.0 * dpr) / 12.0)) * 12))
+            percentage = int(round((recommended / 96.0) * 100))
+            self.log(
+                f"Detected host scale {dpr:.2f}x -> auto DPI {recommended} ({percentage}%)",
+                "info",
+            )
+
+            wine = self.get_wine_path("wine")
+            if not wine.exists():
+                self.log("Wine not available; skipping auto DPI", "warning")
+                return
+            env = os.environ.copy()
+            env["WINEPREFIX"] = self.directory
+            env["WINEDEBUG"] = "-all"
+            success, _, stderr = self.run_command(
+                [
+                    str(wine),
+                    "reg",
+                    "add",
+                    "HKEY_CURRENT_USER\\Control Panel\\Desktop",
+                    "/v",
+                    "LogPixels",
+                    "/t",
+                    "REG_DWORD",
+                    "/d",
+                    str(recommended),
+                    "/f",
+                ],
+                check=False,
+                env=env,
+                capture=True,
+            )
+            if success:
+                self.log(
+                    f"Auto DPI set to {recommended} ({percentage}%); restart Affinity apps to apply",
+                    "success",
+                )
+            else:
+                self.log(
+                    f"Failed to write auto DPI: {stderr or 'unknown error'}",
+                    "warning",
+                )
+        except Exception as e:
+            self.log(f"Auto DPI error: {e}", "warning")
+
     def set_dpi_scaling(self):
         """Set DPI scaling for Affinity applications"""
         self.log(
@@ -16556,32 +16621,40 @@ Would you like to continue with {distro_name} anyway?"""
         screen_height = screen.height()
 
         if screen_width < 800 or screen_height < 600:
-            min_width = min(400, int(screen_width * 0.9))
-            min_height = min(350, int(screen_height * 0.7))
-            default_width = min(500, int(screen_width * 0.85))
-            default_height = min(400, int(screen_height * 0.65))
+            min_width = min(420, int(screen_width * 0.9))
+            min_height = min(440, int(screen_height * 0.7))
+            default_width = min(540, int(screen_width * 0.85))
+            default_height = min(500, int(screen_height * 0.7))
             max_width = int(screen_width * 0.95)
-            max_height = int(screen_height * 0.85)
+            max_height = int(screen_height * 0.9)
         elif screen_width < 1280 or screen_height < 720:
-            min_width = 450
-            min_height = 380
-            default_width = 550
-            default_height = 420
+            min_width = 480
+            min_height = 480
+            default_width = 560
+            default_height = 560
             max_width = int(screen_width * 0.9)
-            max_height = int(screen_height * 0.85)
+            max_height = int(screen_height * 0.9)
         else:
-            min_width = 450
-            min_height = 380
-            default_width = 550
-            default_height = 420
-            max_width = 800
-            max_height = 700
+            min_width = 500
+            min_height = 500
+            default_width = 580
+            default_height = 620
+            max_width = 820
+            max_height = 780
 
         dialog.setMinimumWidth(min_width)
         dialog.setMinimumHeight(min_height)
         dialog.setMaximumWidth(max_width)
         dialog.setMaximumHeight(max_height)
         dialog.resize(default_width, default_height)
+
+        # Ensure the dialog is tall enough to show all content; clamp inside max.
+        hint = dialog.sizeHint()
+        target_w = min(max(default_width, hint.width()), max_width)
+        target_h = min(max(default_height, hint.height()), max_height)
+        target_w = max(target_w, min_width)
+        target_h = max(target_h, min_height)
+        dialog.resize(target_w, target_h)
         dialog.setSizeGripEnabled(True)
         dialog.setStyleSheet(self.get_dialog_stylesheet())
 
