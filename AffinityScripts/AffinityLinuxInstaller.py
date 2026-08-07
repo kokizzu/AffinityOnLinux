@@ -304,6 +304,11 @@ class AffinityInstallerGUI(QMainWindow):
     show_spinner_signal = pyqtSignal(object)
     hide_spinner_signal = pyqtSignal(object)
     gpu_selection_signal = pyqtSignal()
+    icons_updated_signal = pyqtSignal()
+    refresh_status_signal = pyqtSignal()
+    show_main_menu_signal = pyqtSignal()
+    window_icon_signal = pyqtSignal(str)
+    apply_auto_dpi_signal = pyqtSignal()
 
     def __init__(self):
         startup_start = time.time()
@@ -328,7 +333,7 @@ class AffinityInstallerGUI(QMainWindow):
         self.setMinimumSize(min_width, min_height)
 
         default_width = min(1200, int(screen_width * 0.8))
-        default_height = min(900, int(screen_height * 0.8))
+        default_height = min(1050, int(screen_height * 0.9))
         self.resize(default_width, default_height)
         step_start = log_timing("Window setup", step_start)
 
@@ -382,6 +387,11 @@ class AffinityInstallerGUI(QMainWindow):
         self.hide_spinner_signal.connect(self._hide_spinner_safe)
         self.waiting_for_gpu_selection = False
         self.gpu_selection_signal.connect(self._configure_gpu_selection_safe)
+        self.icons_updated_signal.connect(self._update_button_icons)
+        self.refresh_status_signal.connect(self.check_installation_status)
+        self.show_main_menu_signal.connect(self.show_main_menu)
+        self.window_icon_signal.connect(self._set_window_icon_safe)
+        self.apply_auto_dpi_signal.connect(self._apply_auto_dpi_on_main_thread)
         step_start = log_timing("Signal connections", step_start)
 
         self.create_ui()
@@ -471,14 +481,14 @@ class AffinityInstallerGUI(QMainWindow):
             self._ensure_icons_directory()
             icons_time = time_module.time() - icons_start
             if icons_time > 0.1:
-                QTimer.singleShot(100, self._update_button_icons)
+                self.icons_updated_signal.emit()
 
             patcher_start = time_module.time()
             self.ensure_patcher_files(silent=True)
             patcher_time = time_module.time() - patcher_start
 
             status_start = time_module.time()
-            self.check_installation_status()
+            self.refresh_status_signal.emit()
             status_time = time_module.time() - status_start
 
             total_bg_time = time_module.time() - bg_start
@@ -655,37 +665,11 @@ class AffinityInstallerGUI(QMainWindow):
                     self.log(f"  {description}: ✗ Not installed", "error")
 
             try:
-                success, stdout, _ = self.run_command(
-                    [
-                        str(wine),
-                        "reg",
-                        "query",
-                        "HKEY_CURRENT_USER\\Software\\Wine\\Direct3D",
-                    ],
-                    check=False,
-                    env=env,
-                    capture=True,
-                )
-                if success:
-                    vulkan_set = False
-                    try:
-                        renderer_success, renderer_stdout, _ = self.run_command(
-                            [
-                                str(wine),
-                                "reg",
-                                "query",
-                                "HKEY_CURRENT_USER\\Software\\Wine\\Direct3D",
-                                "/v",
-                                "renderer",
-                            ],
-                            check=False,
-                            env=env,
-                            capture=True,
-                        )
-                        if renderer_success and "vulkan" in renderer_stdout.lower():
-                            vulkan_set = True
-                    except Exception:
-                        pass
+                if self._wine_reg_key_exists("HKCU", r"Software\Wine\Direct3D"):
+                    renderer = self._read_wine_reg_value(
+                        "HKCU", r"Software\Wine\Direct3D", "renderer"
+                    )
+                    vulkan_set = isinstance(renderer, str) and "vulkan" in renderer.lower()
 
                     if vulkan_set:
                         self.log(f"  Vulkan Renderer: ✓ Configured", "success")
@@ -828,6 +812,8 @@ class AffinityInstallerGUI(QMainWindow):
             if icon_path:
                 icon = QIcon(str(icon_path))
                 btn.setIcon(icon)
+                if btn.objectName() == "zoomButton":
+                    btn.setText("")
 
     def toggle_theme(self):
         """Toggle between dark and light themes"""
@@ -1804,12 +1790,12 @@ class AffinityInstallerGUI(QMainWindow):
                         border-radius: 6px;
                     }
                     QScrollBar::handle:vertical {
-                        background-color: #3c3c3c;
+                        background-color: #555555;
                         border-radius: 6px;
                         min-height: 30px;
                     }
                     QScrollBar::handle:vertical:hover {
-                        background-color: #4a4a4a;
+                        background-color: #6a6a6a;
                     }
                     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
                         height: 0px;
@@ -2091,6 +2077,8 @@ class AffinityInstallerGUI(QMainWindow):
         self.zoom_out_btn.setFixedSize(32, 32)
         if icon_path_zoom_out:
             self.zoom_out_btn.setIcon(QIcon(str(icon_path_zoom_out)))
+        else:
+            self.zoom_out_btn.setText("−")
         self.zoom_out_btn.setIconSize(QSize(18, 18))
         self.zoom_out_btn.clicked.connect(self.zoom_out)
         zoom_layout.addWidget(self.zoom_out_btn)
@@ -2104,6 +2092,8 @@ class AffinityInstallerGUI(QMainWindow):
         self.zoom_reset_btn.setFixedSize(32, 32)
         if icon_path_zoom_reset:
             self.zoom_reset_btn.setIcon(QIcon(str(icon_path_zoom_reset)))
+        else:
+            self.zoom_reset_btn.setText("⟲")
         self.zoom_reset_btn.setIconSize(QSize(18, 18))
         self.zoom_reset_btn.clicked.connect(self.zoom_reset)
         zoom_layout.addWidget(self.zoom_reset_btn)
@@ -2117,6 +2107,8 @@ class AffinityInstallerGUI(QMainWindow):
         self.zoom_in_btn.setFixedSize(32, 32)
         if icon_path_zoom_in:
             self.zoom_in_btn.setIcon(QIcon(str(icon_path_zoom_in)))
+        else:
+            self.zoom_in_btn.setText("+")
         self.zoom_in_btn.setIconSize(QSize(18, 18))
         self.zoom_in_btn.clicked.connect(self.zoom_in)
         zoom_layout.addWidget(self.zoom_in_btn)
@@ -2582,32 +2574,20 @@ class AffinityInstallerGUI(QMainWindow):
                                 "<?xml"
                             ) or first_bytes.strip().startswith("<svg"):
                                 self.affinity_icon_path = str(icon_path)
-                                from PyQt6.QtCore import QTimer
-
-                                QTimer.singleShot(
-                                    0, lambda: self.setWindowIcon(QIcon(str(icon_path)))
-                                )
+                                self.window_icon_signal.emit(str(icon_path))
                                 return
                             else:
                                 icon_path.unlink()
                     except Exception:
                         self.affinity_icon_path = str(icon_path)
-                        from PyQt6.QtCore import QTimer
-
-                        QTimer.singleShot(
-                            0, lambda: self.setWindowIcon(QIcon(str(icon_path)))
-                        )
+                        self.window_icon_signal.emit(str(icon_path))
                         return
 
                 try:
                     icon_url = "https://raw.githubusercontent.com/seapear/AffinityOnLinux/main/Assets/Icons/Affinity-Canva.svg"
                     urllib.request.urlretrieve(icon_url, str(icon_path))
                     self.affinity_icon_path = str(icon_path)
-                    from PyQt6.QtCore import QTimer
-
-                    QTimer.singleShot(
-                        0, lambda: self.setWindowIcon(QIcon(str(icon_path)))
-                    )
+                    self.window_icon_signal.emit(str(icon_path))
                 except Exception:
                     pass
             except Exception:
@@ -2893,6 +2873,10 @@ class AffinityInstallerGUI(QMainWindow):
     def show_message(self, title, message, msg_type="info"):
         """Show message box (thread-safe via signal)"""
         self.show_message_signal.emit(title, message, msg_type)
+
+    def _set_window_icon_safe(self, icon_path):
+        """Set window icon (called from main thread via signal)"""
+        self.setWindowIcon(QIcon(icon_path))
 
     def _show_message_safe(self, title, message, msg_type="info"):
         """Thread-safe message box handler (called from main thread)"""
@@ -5675,7 +5659,7 @@ class AffinityInstallerGUI(QMainWindow):
                 return  # All icons already exist
 
             # Download icons in parallel for speed (no log messages)
-            base_url = "https://raw.githubusercontent.com/seapear/AffinityOnLinux/main/"
+            base_url = "https://raw.githubusercontent.com/ryzendew/AffinityOnLinux/main/"
 
             def download_icon(local_name, github_path):
                 """Download a single icon"""
@@ -5861,23 +5845,23 @@ class AffinityInstallerGUI(QMainWindow):
 
         if screen_width < 800 or screen_height < 600:
             min_width = min(400, int(screen_width * 0.9))
-            min_height = min(300, int(screen_height * 0.7))
+            min_height = min(360, int(screen_height * 0.7))
             default_width = min(500, int(screen_width * 0.85))
-            default_height = min(350, int(screen_height * 0.65))
+            default_height = min(480, int(screen_height * 0.8))
             max_width = int(screen_width * 0.95)
             max_height = int(screen_height * 0.85)
         elif screen_width < 1280 or screen_height < 720:
             min_width = 450
-            min_height = 320
+            min_height = 420
             default_width = 550
-            default_height = 380
+            default_height = 500
             max_width = int(screen_width * 0.9)
             max_height = int(screen_height * 0.85)
         else:
             min_width = 450
-            min_height = 320
-            default_width = 550
-            default_height = 380
+            min_height = 440
+            default_width = 560
+            default_height = 520
             max_width = 800
             max_height = 700
 
@@ -6103,7 +6087,9 @@ class AffinityInstallerGUI(QMainWindow):
         main_layout.addWidget(title_label)
 
         # Description
-        desc_label = QLabel(
+        desc_label = QLabel()
+        desc_label.setTextFormat(Qt.TextFormat.RichText)
+        desc_label.setText(
             "Please choose your preferred graphics backend:\n\n"
             "• <b>vkd3d</b> - Includes OpenCL support for hardware acceleration\n"
             "• <b>DXVK</b> - Hardware accelerated, uses the GPU (no OpenCL)\n\n"
@@ -7259,7 +7245,7 @@ class AffinityInstallerGUI(QMainWindow):
 
         # Show main menu (Wine setup can be done manually if needed)
         self.update_progress(1.0)
-        QTimer.singleShot(0, self.show_main_menu)
+        self.show_main_menu_signal.emit()
 
     def one_click_setup(self):
         """One-click full setup: detects distro, installs deps, sets up Wine, installs Winetricks deps"""
@@ -7519,6 +7505,14 @@ class AffinityInstallerGUI(QMainWindow):
         if self.check_cancelled():
             return
 
+        # Auto-configure Affinity DPI scaling based on host display resolution.
+        # Runs on the GUI thread via signal so it is safe under Wayland/Qt.
+        self.update_progress_text("Step 3.5/5: Auto-configuring DPI scaling for your display...")
+        self.apply_auto_dpi_signal.emit()
+
+        if self.check_cancelled():
+            return
+
         # Step 4: Install Affinity v3 settings to enable settings saving
         self.update_progress_text("Step 4/5: Installing Affinity v3 settings...")
         self.update_progress(0.80)
@@ -7572,7 +7566,7 @@ class AffinityInstallerGUI(QMainWindow):
         self.end_operation()
 
         # Refresh installation status to update button states
-        QTimer.singleShot(100, self.check_installation_status)
+        self.refresh_status_signal.emit()
 
         # Ask if user wants to install an Affinity app
         self.prompt_affinity_install_signal.emit()
@@ -9736,7 +9730,7 @@ class AffinityInstallerGUI(QMainWindow):
             self.log("\n✓ Wine setup completed!", "success")
 
             # Refresh installation status to update button states
-            QTimer.singleShot(100, self.check_installation_status)
+            self.refresh_status_signal.emit()
             return True
 
         except Exception as e:
@@ -11370,9 +11364,7 @@ class AffinityInstallerGUI(QMainWindow):
                 self.update_progress(1.0)
 
                 # Refresh installation status
-                from PyQt6.QtCore import QTimer
-
-                QTimer.singleShot(500, self.check_installation_status)
+                self.refresh_status_signal.emit()
             else:
                 self.log(
                     "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -12070,51 +12062,87 @@ Would you like to continue with {distro_name} anyway?"""
             except:
                 pass
 
+    def _wine_reg_key_exists(self, hive, key_path):
+        """Check if a registry key exists by parsing the prefix's reg files (fast)."""
+        reg_file = "system.reg" if hive == "HKLM" else "user.reg"
+        reg_path = Path(self.directory) / reg_file
+        if not reg_path.exists():
+            return False
+        target = "[" + key_path.replace("\\", "\\\\").lower() + "]"
+        try:
+            with open(reg_path, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    if line.startswith("["):
+                        end = line.find("]")
+                        if end != -1 and line[: end + 1].lower() == target:
+                            return True
+        except Exception:
+            pass
+        return False
+
+    def _read_wine_reg_value(self, hive, key_path, value_name):
+        """Read a registry value from the prefix's reg files (system.reg/user.reg).
+
+        Parsing the file is instant, unlike `wine reg query` which costs several
+        seconds per call due to wineserver startup. Returns int for dword values,
+        str for quoted strings, or None if not found.
+        """
+        reg_file = "system.reg" if hive == "HKLM" else "user.reg"
+        reg_path = Path(self.directory) / reg_file
+        if not reg_path.exists():
+            return None
+        try:
+            target_section = key_path.replace("\\", "\\\\").lower()
+            current_section = None
+            with open(reg_path, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("["):
+                        end = line.find("]")
+                        current_section = (
+                            line[1:end].lower() if end != -1 else None
+                        )
+                        continue
+                    if current_section != target_section:
+                        continue
+                    m = re.match(r'^"([^"]*)"=(.*)$', line)
+                    if not m or m.group(1).lower() != value_name.lower():
+                        continue
+                    raw = m.group(2).strip()
+                    if raw.lower().startswith("dword:"):
+                        try:
+                            return int(raw[6:], 16)
+                        except ValueError:
+                            return None
+                    if raw.startswith('"') and raw.endswith('"'):
+                        return raw[1:-1]
+                    return raw
+        except Exception:
+            return None
+        return None
+
     def _check_winetricks_component(self, component, wine, env):
         """Check if a winetricks component is installed"""
         try:
             # Different checks for different components
             if component == "dotnet35sp1" or component == "dotnet35":
                 # Check for .NET 3.5 in registry (dotnet35sp1 installs .NET 3.5 SP1)
-                success, stdout, _ = self.run_command(
-                    [
-                        str(wine),
-                        "reg",
-                        "query",
-                        "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\NET Framework Setup\\NDP\\v3.5",
-                        "/v",
-                        "Install",
-                    ],
-                    check=False,
-                    env=env,
-                    capture=True,
+                install = self._read_wine_reg_value(
+                    "HKLM",
+                    r"Software\Microsoft\NET Framework Setup\NDP\v3.5",
+                    "Install",
                 )
-                if success and stdout:
-                    # Check if Install value is 1
-                    if "0x1" in stdout or "REG_DWORD" in stdout:
-                        return True
+                if install == 1:
+                    return True
             elif component == "dotnet48":
                 # Check for .NET 4.8 in registry
-                success, stdout, _ = self.run_command(
-                    [
-                        str(wine),
-                        "reg",
-                        "query",
-                        "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\NET Framework Setup\\NDP\\v4\\Full",
-                        "/v",
-                        "Release",
-                    ],
-                    check=False,
-                    env=env,
-                    capture=True,
+                release = self._read_wine_reg_value(
+                    "HKLM",
+                    r"Software\Microsoft\NET Framework Setup\NDP\v4\Full",
+                    "Release",
                 )
-                if success and stdout:
-                    # .NET 4.8 has release number 528040 or higher
-                    match = re.search(r"0x([0-9a-fA-F]+)", stdout)
-                    if match:
-                        release = int(match.group(1), 16)
-                        if release >= 528040:  # .NET 4.8
-                            return True
+                if isinstance(release, int) and release >= 528040:  # .NET 4.8
+                    return True
             elif component == "corefonts":
                 # Check if core fonts directory exists
                 fonts_dir = Path(self.directory) / "drive_c" / "windows" / "Fonts"
@@ -13048,6 +13076,7 @@ Would you like to continue with {distro_name} anyway?"""
                     )
 
                 display_name = {
+                    "Add": "Affinity (Unified)",
                     "Photo": "Affinity Photo",
                     "Designer": "Affinity Designer",
                     "Publisher": "Affinity Publisher",
@@ -13419,7 +13448,7 @@ Would you like to continue with {distro_name} anyway?"""
             )
 
             # Refresh installation status to update button states
-            QTimer.singleShot(100, self.check_installation_status)
+            self.refresh_status_signal.emit()
 
             message_text = f"{display_name} has been successfully updated!\n\n"
             message_text += "WinMetadata has been reinstalled to prevent corruption.\n"
@@ -13607,12 +13636,18 @@ Would you like to continue with {distro_name} anyway?"""
 
             self.update_progress(1.0)
             self.update_progress_text("Installation complete!")
-            self.log(f"\n✓ {app_name} installation completed!", "success")
+            display_name = {
+                "Add": "Affinity (Unified)",
+                "Photo": "Affinity Photo",
+                "Designer": "Affinity Designer",
+                "Publisher": "Affinity Publisher",
+            }.get(app_name, app_name)
+            self.log(f"\n✓ {display_name} installation completed!", "success")
             self.log("You can now launch it from your application menu.", "info")
 
             self.show_message(
                 "Installation Complete",
-                f"{app_name} has been successfully installed!\n\n"
+                f"{display_name} has been successfully installed!\n\n"
                 "You can launch it from your application menu.",
                 "info",
             )
@@ -14218,15 +14253,12 @@ Would you like to continue with {distro_name} anyway?"""
                         "info",
                     )
                     # Show success message on main thread
-                    QTimer.singleShot(
-                        0,
-                        lambda: QMessageBox.information(
-                            self,
-                            "OpenCL Enabled",
-                            "OpenCL support has been successfully enabled!\n\n"
-                            "OpenCL is now configured for all installed Affinity applications.\n"
-                            "You may need to restart Affinity applications for the changes to take effect.",
-                        ),
+                    self.show_message(
+                        "OpenCL Enabled",
+                        "OpenCL support has been successfully enabled!\n\n"
+                        "OpenCL is now configured for all installed Affinity applications.\n"
+                        "You may need to restart Affinity applications for the changes to take effect.",
+                        "info",
                     )
                 else:
                     self.log(
@@ -14237,18 +14269,15 @@ Would you like to continue with {distro_name} anyway?"""
                         "Please check the .opencl_enabled file in your Affinity directory",
                         "warning",
                     )
-                    QTimer.singleShot(
-                        0,
-                        lambda: QMessageBox.warning(
-                            self,
-                            "OpenCL Warning",
-                            "OpenCL support was configured, but the preference may not have been saved correctly.\n\n"
-                            "Please check the log for details.",
-                        ),
+                    self.show_message(
+                        "OpenCL Warning",
+                        "OpenCL support was configured, but the preference may not have been saved correctly.\n\n"
+                        "Please check the log for details.",
+                        "warning",
                     )
 
                 # Refresh installation status
-                QTimer.singleShot(100, self.check_installation_status)
+                self.refresh_status_signal.emit()
 
             except Exception as e:
                 import traceback
@@ -14258,14 +14287,10 @@ Would you like to continue with {distro_name} anyway?"""
                 self.log(f"Error enabling OpenCL support: {error_msg}", "error")
                 self.log(f"Traceback: {error_trace}", "error")
                 self.update_progress_text("Error enabling OpenCL support")
-                # Use QTimer to show message box on main thread
-                QTimer.singleShot(
-                    0,
-                    lambda: QMessageBox.critical(
-                        self,
-                        "Error",
-                        f"An error occurred while enabling OpenCL support:\n\n{error_msg}\n\nCheck the log for details.",
-                    ),
+                self.show_message(
+                    "Error",
+                    f"An error occurred while enabling OpenCL support:\n\n{error_msg}\n\nCheck the log for details.",
+                    "error",
                 )
 
         # Start the thread
@@ -16468,6 +16493,80 @@ Would you like to continue with {distro_name} anyway?"""
         finally:
             self.end_operation()
 
+    def _apply_auto_dpi_on_main_thread(self):
+        """Auto-configure Affinity DPI scaling based on the host display
+        resolution and scale factor (used during one-click setup). Writes
+        HKEY_CURRENT_USER\\Control Panel\\Desktop\\LogPixels via wine reg."""
+        try:
+            screen = QApplication.primaryScreen()
+            if screen is None:
+                self.log(
+                    "Could not detect primary screen; skipping auto DPI", "warning"
+                )
+                return
+            dpr = screen.devicePixelRatio() or 1.0
+            geo = screen.geometry()
+            phys_w = int(geo.width() * dpr)
+            phys_h = int(geo.height() * dpr)
+
+            # Resolution-based recommendation (mirrors the dialog's common values table)
+            if phys_w >= 3840 or phys_h >= 2160:
+                res_dpi = 192
+            elif phys_w >= 2560 or phys_h >= 1440:
+                res_dpi = 144
+            elif phys_w >= 1920 or phys_h >= 1080:
+                res_dpi = 96
+            else:
+                res_dpi = 96
+
+            # OS-scale-based recommendation (96 per 100% host scale, snapped to slider steps)
+            scale_dpi = max(96, min(480, int(round((96.0 * dpr) / 12.0)) * 12))
+
+            recommended = max(res_dpi, scale_dpi)
+            percentage = int(round((recommended / 96.0) * 100))
+            self.log(
+                f"Auto DPI detected: {phys_w}x{phys_h} at {dpr:.2f}x scale -> DPI {recommended} ({percentage}%)",
+                "info",
+            )
+
+            wine = self.get_wine_path("wine")
+            if not wine.exists():
+                self.log("Wine not available; skipping auto DPI", "warning")
+                return
+            env = os.environ.copy()
+            env["WINEPREFIX"] = self.directory
+            env["WINEDEBUG"] = "-all"
+            success, _, stderr = self.run_command(
+                [
+                    str(wine),
+                    "reg",
+                    "add",
+                    "HKEY_CURRENT_USER\\Control Panel\\Desktop",
+                    "/v",
+                    "LogPixels",
+                    "/t",
+                    "REG_DWORD",
+                    "/d",
+                    str(recommended),
+                    "/f",
+                ],
+                check=False,
+                env=env,
+                capture=True,
+            )
+            if success:
+                self.log(
+                    f"Auto DPI set to {recommended} ({percentage}%); restart Affinity apps to apply",
+                    "success",
+                )
+            else:
+                self.log(
+                    f"Failed to write auto DPI: {stderr or 'unknown error'}",
+                    "warning",
+                )
+        except Exception as e:
+            self.log(f"Auto DPI error: {e}", "warning")
+
     def set_dpi_scaling(self):
         """Set DPI scaling for Affinity applications"""
         self.log(
@@ -16541,26 +16640,26 @@ Would you like to continue with {distro_name} anyway?"""
         screen_height = screen.height()
 
         if screen_width < 800 or screen_height < 600:
-            min_width = min(400, int(screen_width * 0.9))
-            min_height = min(350, int(screen_height * 0.7))
-            default_width = min(500, int(screen_width * 0.85))
-            default_height = min(400, int(screen_height * 0.65))
+            min_width = min(420, int(screen_width * 0.9))
+            min_height = min(440, int(screen_height * 0.7))
+            default_width = min(540, int(screen_width * 0.85))
+            default_height = min(500, int(screen_height * 0.7))
             max_width = int(screen_width * 0.95)
-            max_height = int(screen_height * 0.85)
+            max_height = int(screen_height * 0.9)
         elif screen_width < 1280 or screen_height < 720:
-            min_width = 450
-            min_height = 380
-            default_width = 550
-            default_height = 420
+            min_width = 480
+            min_height = 480
+            default_width = 560
+            default_height = 560
             max_width = int(screen_width * 0.9)
-            max_height = int(screen_height * 0.85)
+            max_height = int(screen_height * 0.9)
         else:
-            min_width = 450
-            min_height = 380
-            default_width = 550
-            default_height = 420
-            max_width = 800
-            max_height = 700
+            min_width = 500
+            min_height = 500
+            default_width = 580
+            default_height = 620
+            max_width = 820
+            max_height = 780
 
         dialog.setMinimumWidth(min_width)
         dialog.setMinimumHeight(min_height)
@@ -16659,6 +16758,14 @@ Would you like to continue with {distro_name} anyway?"""
         button_layout.addWidget(save_btn)
 
         main_layout.addLayout(button_layout)
+
+        # Ensure the dialog is large enough to show all content; clamp inside min/max.
+        hint = dialog.sizeHint()
+        target_w = min(max(default_width, hint.width()), max_width)
+        target_h = min(max(default_height, hint.height()), max_height)
+        target_w = max(target_w, min_width)
+        target_h = max(target_h, min_height)
+        dialog.resize(target_w, target_h)
 
         # Show dialog
         dialog.show()
@@ -16855,7 +16962,7 @@ Would you like to continue with {distro_name} anyway?"""
             )
 
             # Refresh installation status
-            QTimer.singleShot(100, self.check_installation_status)
+            self.refresh_status_signal.emit()
 
         except PermissionError:
             self.log("✗ Permission denied. Some files may be in use.", "error")
