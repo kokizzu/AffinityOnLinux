@@ -6659,25 +6659,13 @@ class AffinityInstallerGUI(QMainWindow):
                                 if quoted_path_match:
                                     app_path = quoted_path_match.group(1)
                                 else:
-                                    exe_match = re.search(
-                                        r"wine\s+([^\s]+\.exe[^\s]*)", exec_content
+                                    # Path wasn't cleanly quoted — don't guess by
+                                    # splitting on whitespace (a bare space inside
+                                    # "Program Files" would truncate the path).
+                                    # Recompute it deterministically instead.
+                                    app_path = self._infer_app_path_for_desktop_file(
+                                        desktop_file
                                     )
-                                    if exe_match:
-                                        app_path = exe_match.group(1)
-                                    else:
-                                        exe_match = re.search(
-                                            r"([^\s]+\.exe[^\s]*)", exec_content
-                                        )
-                                        if exe_match:
-                                            app_path = exe_match.group(1).strip('"')
-                                        else:
-                                            parts = exec_content.split()
-                                            for part in reversed(parts):
-                                                if ".exe" in part or "drive_c" in part:
-                                                    app_path = part.strip('"')
-                                                    break
-                                            else:
-                                                app_path = None
 
                                 # Get wine path
                                 wine = self.get_wine_path("wine")
@@ -6690,7 +6678,7 @@ class AffinityInstallerGUI(QMainWindow):
                                 # Rebuild Exec line WITHOUT DXVK env vars
                                 exec_line = f"Exec=env WINEPREFIX={directory_str}"
                                 if gpu_env:
-                                    exec_line += f" {gpu_env}"
+                                    exec_line += f" {gpu_env.strip()}"
                                 exec_line += f" {wine_path}"
                                 if app_path:
                                     if " " in app_path or not app_path.startswith("/"):
@@ -6923,25 +6911,13 @@ class AffinityInstallerGUI(QMainWindow):
                                 if quoted_path_match:
                                     app_path = quoted_path_match.group(1)
                                 else:
-                                    exe_match = re.search(
-                                        r"wine\s+([^\s]+\.exe[^\s]*)", exec_content
+                                    # Path wasn't cleanly quoted — don't guess by
+                                    # splitting on whitespace (a bare space inside
+                                    # "Program Files" would truncate the path).
+                                    # Recompute it deterministically instead.
+                                    app_path = self._infer_app_path_for_desktop_file(
+                                        desktop_file
                                     )
-                                    if exe_match:
-                                        app_path = exe_match.group(1)
-                                    else:
-                                        exe_match = re.search(
-                                            r"([^\s]+\.exe[^\s]*)", exec_content
-                                        )
-                                        if exe_match:
-                                            app_path = exe_match.group(1).strip('"')
-                                        else:
-                                            parts = exec_content.split()
-                                            for part in reversed(parts):
-                                                if ".exe" in part or "drive_c" in part:
-                                                    app_path = part.strip('"')
-                                                    break
-                                            else:
-                                                app_path = None
 
                                 # Get wine path
                                 wine = self.get_wine_path("wine")
@@ -6955,9 +6931,9 @@ class AffinityInstallerGUI(QMainWindow):
                                 # Rebuild Exec line with DXVK env vars
                                 exec_line = f"Exec=env WINEPREFIX={directory_str}"
                                 if gpu_env:
-                                    exec_line += f" {gpu_env}"
+                                    exec_line += f" {gpu_env.strip()}"
                                 if dxvk_env:
-                                    exec_line += f" {dxvk_env}"
+                                    exec_line += f" {dxvk_env.strip()}"
                                 exec_line += f" {wine_path}"
                                 if app_path:
                                     if " " in app_path or not app_path.startswith("/"):
@@ -7056,26 +7032,14 @@ class AffinityInstallerGUI(QMainWindow):
                         if quoted_path_match:
                             app_path = quoted_path_match.group(1)
                         else:
-                            # Pattern 2: Find app path without quotes (look for .exe)
-                            exe_match = re.search(
-                                r"wine\s+([^\s]+\.exe[^\s]*)", exec_content
+                            # Path wasn't cleanly quoted — don't guess by
+                            # splitting on whitespace (a bare space inside
+                            # "Program Files" would truncate the path down to
+                            # just "Files/Affinity/Affinity/AffinityHook.exe").
+                            # Recompute it deterministically instead.
+                            app_path = self._infer_app_path_for_desktop_file(
+                                desktop_file
                             )
-                            if exe_match:
-                                app_path = exe_match.group(1)
-                            else:
-                                # Pattern 3: Find any path containing .exe
-                                exe_match = re.search(
-                                    r"([^\s]+\.exe[^\s]*)", exec_content
-                                )
-                                if exe_match:
-                                    app_path = exe_match.group(1).strip('"')
-                                else:
-                                    # Fallback: try to extract from the end
-                                    parts = exec_content.split()
-                                    for part in reversed(parts):
-                                        if ".exe" in part or "drive_c" in part:
-                                            app_path = part.strip('"')
-                                            break
 
                         # Get wine path (standard location)
                         wine = self.get_wine_path("wine")
@@ -7084,9 +7048,9 @@ class AffinityInstallerGUI(QMainWindow):
                         # Rebuild Exec line with new GPU env vars
                         exec_line = f"Exec=env WINEPREFIX={directory_str}"
                         if gpu_env:
-                            exec_line += f" {gpu_env}"
+                            exec_line += f" {gpu_env.strip()}"
                         if dxvk_env:
-                            exec_line += f" {dxvk_env}"
+                            exec_line += f" {dxvk_env.strip()}"
                         exec_line += f" {wine_path}"
                         if app_path:
                             # Quote the app path if it contains spaces or special characters
@@ -13196,9 +13160,9 @@ Would you like to continue with {distro_name} anyway?"""
             # Include GPU environment variables if configured
             exec_line = f"Exec=env WINEPREFIX={directory_str}"
             if gpu_env:
-                exec_line += f" {gpu_env}"
+                exec_line += f" {gpu_env.strip()}"
             if dxvk_env:
-                exec_line += f" {dxvk_env}"
+                exec_line += f" {dxvk_env.strip()}"
             exec_line += f' {wine_str} "{exe_path_normalized}"'
             f.write(f"{exec_line}\n")
             f.write("Terminal=false\n")
@@ -15262,9 +15226,9 @@ Would you like to continue with {distro_name} anyway?"""
             # Include GPU environment variables if configured
             exec_line = f"Exec=env WINEPREFIX={directory_str}"
             if gpu_env:
-                exec_line += f" {gpu_env}"
+                exec_line += f" {gpu_env.strip()}"
             if dxvk_env:
-                exec_line += f" {dxvk_env}"
+                exec_line += f" {dxvk_env.strip()}"
             exec_line += f' {wine_str} "{app_path_str}"'
             f.write(f"{exec_line}\n")
             f.write("Terminal=false\n")
@@ -17128,10 +17092,20 @@ Would you like to continue with {distro_name} anyway?"""
                         f"Warning: Could not remove d3d12 DLL overrides: {e}", "warning"
                     )
 
+        # Prefer AffinityHook.exe if AffinityPluginLoader has been installed —
+        # launching Affinity.exe directly bypasses the hook, so the plugin
+        # loader silently never loads even though it's installed correctly.
+        hook_exe = affinity_exe.parent / "AffinityHook.exe"
+        if hook_exe.exists():
+            launch_target = "C:/Program Files/Affinity/Affinity/AffinityHook.exe"
+            self.log("AffinityPluginLoader detected — launching via AffinityHook.exe", "info")
+        else:
+            launch_target = "C:/Program Files/Affinity/Affinity/Affinity.exe"
+
         self.log("✓ Environment variables configured", "success")
         self.log(f"Wine: {wine_bin}", "info")
         self.log(f"WINEPREFIX: {self.directory}", "info")
-        self.log(f"Affinity: {affinity_exe}", "info")
+        self.log(f"Affinity: {launch_target}", "info")
 
         # Launch Affinity using wine start
         self.log("\nLaunching Affinity v3...", "info")
@@ -17140,7 +17114,7 @@ Would you like to continue with {distro_name} anyway?"""
         wine_start_cmd = [
             str(wine_bin),
             "start",
-            "C:/Program Files/Affinity/Affinity/Affinity.exe",
+            launch_target,
         ]
 
         try:
@@ -17463,60 +17437,117 @@ Would you like to continue with {distro_name} anyway?"""
             copied += 1
         self.log(f"  Copied {copied} file(s) total", "info")
 
+    def _infer_app_path_for_desktop_file(self, desktop_file):
+        """Deterministically resolve the correct, fully-qualified exe path for a
+        known Affinity*.desktop file, keyed off its filename. Used as the
+        fallback when an existing Exec= line can't be reliably parsed (e.g. the
+        exe path isn't quoted). Deliberately does NOT fall back to naive
+        whitespace-splitting of the Exec= line, since a bare space inside
+        "Program Files" causes that approach to truncate the path down to just
+        "Files/Affinity/Affinity/AffinityHook.exe"."""
+        base = Path(self.directory) / "drive_c" / "Program Files" / "Affinity"
+        name = desktop_file.name
+        if name == "Affinity.desktop":
+            install_dir = base / "Affinity"
+            hook_exe = install_dir / "AffinityHook.exe"
+            exe = "AffinityHook.exe" if hook_exe.exists() else "Affinity.exe"
+            return str(install_dir / exe).replace("\\", "/")
+        if name == "AffinityPhoto.desktop":
+            return str(base / "Photo 2" / "Photo.exe").replace("\\", "/")
+        if name == "AffinityDesigner.desktop":
+            return str(base / "Designer 2" / "Designer.exe").replace("\\", "/")
+        if name == "AffinityPublisher.desktop":
+            return str(base / "Publisher 2" / "Publisher.exe").replace("\\", "/")
+        return None
+
+    def _build_affinity_exec_line(self, prefer_hook=True):
+        """Deterministically build a correct, fully-qualified Exec= line for the
+        Affinity (Unified) app, rather than trying to parse/patch whatever text
+        happens to already be in a .desktop file.
+
+        Using AffinityHook.exe (when present and prefer_hook is True) instead of
+        Affinity.exe is what makes AffinityPluginLoader actually load. Building the
+        line from known-good Path objects (instead of regex/whitespace parsing of
+        an existing Exec= line) avoids corrupting the path — e.g. the space inside
+        "Program Files" previously caused naive whitespace-splitting fallbacks
+        elsewhere in this file to truncate the path down to just
+        "Files/Affinity/Affinity/AffinityHook.exe".
+        """
+        install_dir = (
+            Path(self.directory) / "drive_c" / "Program Files" / "Affinity" / "Affinity"
+        )
+        hook_exe = install_dir / "AffinityHook.exe"
+        exe_name = "AffinityHook.exe" if (prefer_hook and hook_exe.exists()) else "Affinity.exe"
+        app_path_str = str(install_dir / exe_name).replace("\\", "/")
+
+        wine_str = str(self.get_wine_path("wine"))
+        directory_str = str(self.directory).rstrip("/")
+
+        # get_gpu_env_vars()/get_dxvk_env_vars() already return a trailing space
+        # when non-empty, so strip before joining to avoid doubled-up spaces.
+        gpu_env = self.get_gpu_env_vars().strip()
+        dxvk_env = self.get_dxvk_env_vars().strip()
+
+        segments = [f"env WINEPREFIX={directory_str}"]
+        if gpu_env:
+            segments.append(gpu_env)
+        if dxvk_env:
+            segments.append(dxvk_env)
+        segments.append(wine_str)
+        segments.append(f'"{app_path_str}"')
+
+        return "Exec=" + " ".join(segments), exe_name
+
     def _patch_affinity_desktop_for_hook(self):
-        """Edit ~/.local/share/applications/Affinity.desktop to replace Affinity.exe
-        with AffinityHook.exe on the Exec= line."""
+        """Rewrite ~/.local/share/applications/Affinity.desktop's Exec= line so it
+        launches AffinityHook.exe (via a deterministically rebuilt, fully-qualified
+        path) instead of Affinity.exe. Creates the desktop entry if it doesn't
+        exist yet, since the plugin loader install can run before any entry has
+        been created."""
         desktop_file = (
             Path.home() / ".local" / "share" / "applications" / "Affinity.desktop"
         )
 
         if not desktop_file.exists():
             self.log(
-                f"⚠ Affinity.desktop not found at {desktop_file} — skipping desktop patch",
+                f"⚠ Affinity.desktop not found at {desktop_file} — creating it",
                 "warning",
             )
-            self.log(
-                "  You will need to manually update your launcher to use AffinityHook.exe",
-                "info",
-            )
-            return
+            try:
+                self.create_desktop_entry("Add")
+            except Exception as e:
+                self.log(f"✗ Failed to create Affinity.desktop: {e}", "error")
+                return
 
         self.log(f"\nPatching {desktop_file}...", "info")
         try:
             with open(desktop_file, "r") as f:
                 lines = f.readlines()
 
+            new_exec_line, exe_name = self._build_affinity_exec_line(prefer_hook=True)
+
             new_lines = []
             patched = False
             for line in lines:
-                if (
-                    line.startswith("Exec=")
-                    and "Affinity.exe" in line
-                    and "AffinityHook.exe" not in line
-                ):
+                if line.startswith("Exec="):
                     original = line.rstrip()
-                    # Replace only the bare "Affinity.exe" token — avoid touching e.g. "AffinityPhoto.exe"
-                    new_line = re.sub(
-                        r"(?<![A-Za-z])Affinity\.exe", "AffinityHook.exe", line
-                    )
-                    new_lines.append(new_line)
+                    new_lines.append(new_exec_line + "\n")
                     patched = True
                     self.log(f"  Before: {original}", "info")
-                    self.log(f"  After:  {new_line.rstrip()}", "success")
+                    self.log(f"  After:  {new_exec_line}", "success")
                 else:
                     new_lines.append(line)
 
-            if patched:
-                with open(desktop_file, "w") as f:
-                    f.writelines(new_lines)
-                self.log(
-                    "✓ Affinity.desktop updated to use AffinityHook.exe", "success"
-                )
-            else:
-                self.log(
-                    "⚠ Exec= line already uses AffinityHook.exe or no matching line found — no change made",
-                    "warning",
-                )
+            if not patched:
+                # No Exec= line was found at all — append one.
+                new_lines.append(new_exec_line + "\n")
+                patched = True
+
+            with open(desktop_file, "w") as f:
+                f.writelines(new_lines)
+            self.log(
+                f"✓ Affinity.desktop updated to launch {exe_name}", "success"
+            )
 
         except Exception as e:
             self.log(f"✗ Failed to patch Affinity.desktop: {e}", "error")
@@ -17813,52 +17844,7 @@ Would you like to continue with {distro_name} anyway?"""
 
             # ── 7. Patch Affinity.desktop to launch AffinityHook.exe ─────────────────
             self.log("\nPatching Affinity.desktop to use AffinityHook.exe...", "info")
-            desktop_file = (
-                Path.home() / ".local" / "share" / "applications" / "Affinity.desktop"
-            )
-
-            if not desktop_file.exists():
-                self.log(f"⚠ Desktop file not found: {desktop_file}", "warning")
-                self.log(
-                    "  You may need to create a desktop entry manually pointing to AffinityHook.exe.",
-                    "info",
-                )
-            else:
-                try:
-                    with open(desktop_file, "r") as f:
-                        lines = f.readlines()
-
-                    new_lines = []
-                    patched = False
-                    for line in lines:
-                        if (
-                            line.startswith("Exec=")
-                            and "Affinity.exe" in line
-                            and "AffinityHook.exe" not in line
-                        ):
-                            new_line = line.replace("Affinity.exe", "AffinityHook.exe")
-                            new_lines.append(new_line)
-                            patched = True
-                            self.log(f"  Old Exec: {line.strip()}", "info")
-                            self.log(f"  New Exec: {new_line.strip()}", "info")
-                        else:
-                            new_lines.append(line)
-
-                    if patched:
-                        with open(desktop_file, "w") as f:
-                            f.writelines(new_lines)
-                        self.log(
-                            "✓ Affinity.desktop updated to launch via AffinityHook.exe",
-                            "success",
-                        )
-                    else:
-                        self.log(
-                            "⚠ Exec line already references AffinityHook.exe or Affinity.exe not found in Exec line — no change made.",
-                            "warning",
-                        )
-
-                except Exception as e:
-                    self.log(f"✗ Failed to patch desktop file: {e}", "error")
+            self._patch_affinity_desktop_for_hook()
 
             self.log(
                 "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
