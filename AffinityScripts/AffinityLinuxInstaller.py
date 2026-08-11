@@ -7,6 +7,7 @@ A modern, professional GUI application for installing Affinity software on Linux
 import os
 import sys
 import subprocess
+import webbrowser
 import shutil
 import tarfile
 import zipfile
@@ -468,6 +469,7 @@ class AffinityInstallerGUI(QMainWindow):
 
         QTimer.singleShot(50, self._deferred_startup_tasks)
         QTimer.singleShot(500, self._check_and_update_dxvk_vkd3d)
+        QTimer.singleShot(700, self.show_donation_dialog)
 
     def _deferred_startup_tasks(self):
         """Run slow startup tasks in background after window is shown"""
@@ -942,6 +944,26 @@ class AffinityInstallerGUI(QMainWindow):
                 QPushButton#okButton:pressed, QPushButton#primaryButton:pressed {
                     background-color: #3db9a0;
                 }
+                QPushButton#koFiButton {
+                    background-color: #ff5e5b;
+                    color: #ffffff;
+                    border: 1px solid #ff5e5b;
+                    font-weight: bold;
+                }
+                QPushButton#koFiButton:hover {
+                    background-color: #ff7673;
+                    border-color: #ff7673;
+                }
+                QPushButton#payPalButton {
+                    background-color: #0070ba;
+                    color: #ffffff;
+                    border: 1px solid #0070ba;
+                    font-weight: bold;
+                }
+                QPushButton#payPalButton:hover {
+                    background-color: #0b7fc9;
+                    border-color: #0b7fc9;
+                }
                 QDialogButtonBox QPushButton {
                     background-color: #3c3c3c;
                     color: #f0f0f0;
@@ -1102,6 +1124,26 @@ class AffinityInstallerGUI(QMainWindow):
                 QPushButton#okButton:pressed, QPushButton#primaryButton:pressed {
                     background-color: #3d8b40;
                 }
+                QPushButton#koFiButton {
+                    background-color: #ff5e5b;
+                    color: #ffffff;
+                    border: 1px solid #ff5e5b;
+                    font-weight: bold;
+                }
+                QPushButton#koFiButton:hover {
+                    background-color: #ff7673;
+                    border-color: #ff7673;
+                }
+                QPushButton#payPalButton {
+                    background-color: #0070ba;
+                    color: #ffffff;
+                    border: 1px solid #0070ba;
+                    font-weight: bold;
+                }
+                QPushButton#payPalButton:hover {
+                    background-color: #0b7fc9;
+                    border-color: #0b7fc9;
+                }
                 QDialogButtonBox QPushButton {
                     background-color: #e0e0e0;
                     color: #2d2d2d;
@@ -1253,6 +1295,76 @@ class AffinityInstallerGUI(QMainWindow):
                 }
             """
 
+    def show_donation_dialog(self):
+        """Show a donation dialog with PayPal and Ko-fi links"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Support This Project")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(420)
+        dialog.setStyleSheet(self.get_dialog_stylesheet())
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
+
+        title = QLabel("Support This Project")
+        title.setObjectName("titleLabel")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title)
+
+        message = QLabel(
+            "If you want to support this project, donating helps keep this project "
+            "alive. Here are the links:"
+        )
+        message.setObjectName("descriptionLabel")
+        message.setWordWrap(True)
+        message.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(message)
+
+        buttons_layout = QHBoxLayout()
+        buttons_layout.setSpacing(12)
+
+        ko_fi_btn = QPushButton("Ko-fi")
+        ko_fi_btn.setObjectName("koFiButton")
+        ko_fi_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        ko_fi_btn.setToolTip("https://ko-fi.com/tlv")
+        ko_fi_btn.clicked.connect(
+            lambda: self._open_donation_url("https://ko-fi.com/tlv")
+        )
+        buttons_layout.addWidget(ko_fi_btn)
+
+        paypal_btn = QPushButton("PayPal")
+        paypal_btn.setObjectName("payPalButton")
+        paypal_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        paypal_btn.setToolTip("https://paypal.me/gamedev1909")
+        paypal_btn.clicked.connect(
+            lambda: self._open_donation_url("https://paypal.me/gamedev1909")
+        )
+        buttons_layout.addWidget(paypal_btn)
+
+        layout.addLayout(buttons_layout)
+
+        button_box = QDialogButtonBox()
+        close_btn = button_box.addButton(QDialogButtonBox.StandardButton.Close)
+        close_btn.clicked.connect(dialog.reject)
+        layout.addWidget(button_box)
+
+        dialog.layout().activate()
+        message.adjustSize()
+        dialog.adjustSize()
+        dialog.exec()
+
+    def _open_donation_url(self, url):
+        """Open a donation URL in the system web browser"""
+        try:
+            webbrowser.open(url)
+        except Exception:
+            self._show_message_safe(
+                "Donate",
+                f"Could not open your browser. Please visit:\n{url}",
+                "info",
+            )
+
     def apply_theme(self):
         """Apply current theme (dark or light)"""
         if self.dark_mode:
@@ -1312,6 +1424,17 @@ class AffinityInstallerGUI(QMainWindow):
             QPushButton#themeToggle:hover {
                 background-color: #3d3d3d;
                 border-color: #555555;
+            }
+            QPushButton#donateButton {
+                background-color: #e0a63d;
+                color: #1e1e1e;
+                border: none;
+                border-radius: 8px;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton#donateButton:hover {
+                background-color: #eeb24f;
             }
             /* Content Area */
             QWidget#contentArea {
@@ -1567,6 +1690,17 @@ class AffinityInstallerGUI(QMainWindow):
             QPushButton#themeToggle:hover {
                 background-color: #d5d5d7;
                 border-color: #c0c0c0;
+            }
+            QPushButton#donateButton {
+                background-color: #f5a623;
+                color: #1e1e1e;
+                border: none;
+                border-radius: 8px;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton#donateButton:hover {
+                background-color: #f7b448;
             }
             /* Content Area */
             QWidget#contentArea {
@@ -1938,6 +2072,13 @@ class AffinityInstallerGUI(QMainWindow):
         self.status_text_label = status_text
 
         top_bar_layout.addWidget(status_container)
+
+        self.donate_btn = QPushButton("Donate")
+        self.donate_btn.setObjectName("donateButton")
+        self.donate_btn.setToolTip("Support this project - Donate")
+        self.donate_btn.setFixedSize(90, icon_size)
+        self.donate_btn.clicked.connect(self.show_donation_dialog)
+        top_bar_layout.addWidget(self.donate_btn)
 
         self.theme_toggle_btn = QPushButton("☀")
         self.theme_toggle_btn.setObjectName("themeToggle")
