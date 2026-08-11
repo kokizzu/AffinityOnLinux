@@ -330,8 +330,8 @@ class AffinityInstallerGUI(QMainWindow):
         screen_width = screen.width()
         screen_height = screen.height()
 
-        min_width = max(640, int(screen_width * 0.7))
-        min_height = max(480, int(screen_height * 0.7))
+        min_width = max(640, int(screen_width * 0.5))
+        min_height = max(480, int(screen_height * 0.5))
         self.setMinimumSize(min_width, min_height)
 
         default_width = min(1200, int(screen_width * 0.8))
@@ -359,8 +359,17 @@ class AffinityInstallerGUI(QMainWindow):
         self.waiting_for_question_response = False
         self.nvidia_dxvk_vkd3d_choice_response = None
         self.waiting_for_nvidia_choice = False
+        self.theme = "mattscreative"
         self.dark_mode = True
+        self._themes = ("dark", "light", "mattscreative")
+        self._theme_display_names = {
+            "dark": "Dark",
+            "light": "Light",
+            "mattscreative": "Mattscreative",
+        }
+        self._section_title_labels = []
         self.icon_buttons = []
+        self._all_action_buttons = []
         self.enable_opencl = False
         self.cancel_event = threading.Event()
         self._process_lock = threading.Lock()
@@ -473,6 +482,8 @@ class AffinityInstallerGUI(QMainWindow):
 
     def _deferred_startup_tasks(self):
         """Run slow startup tasks in background after window is shown"""
+        self._normalize_action_buttons()
+
         self.load_affinity_icon()
 
         self.setup_zoom()
@@ -819,18 +830,21 @@ class AffinityInstallerGUI(QMainWindow):
                 btn.setIcon(icon)
                 if btn.objectName() == "zoomButton":
                     btn.setText("")
+        self._normalize_action_buttons()
 
     def toggle_theme(self):
-        """Toggle between dark and light themes"""
-        self.dark_mode = not self.dark_mode
+        """Cycle through dark, light, and mattscreative themes"""
+        current_index = self._themes.index(self.theme)
+        self.theme = self._themes[(current_index + 1) % len(self._themes)]
         self.apply_theme()
 
-        if self.dark_mode:
-            self.theme_toggle_btn.setText("☀")
-            self.theme_toggle_btn.setToolTip("Switch to Light Mode")
-        else:
-            self.theme_toggle_btn.setText("🌙")
-            self.theme_toggle_btn.setToolTip("Switch to Dark Mode")
+        next_theme = self._themes[
+            (self._themes.index(self.theme) + 1) % len(self._themes)
+        ]
+        self.theme_toggle_btn.setText(self._theme_display_names[self.theme])
+        self.theme_toggle_btn.setToolTip(
+            "Switch to {} Theme".format(self._theme_display_names[next_theme])
+        )
 
         self._update_button_icons()
 
@@ -842,14 +856,13 @@ class AffinityInstallerGUI(QMainWindow):
 
         self._update_progress_label_style()
 
-    def get_dialog_stylesheet(self):
-        """Get the appropriate stylesheet for dialogs based on current theme - clean modern style"""
-        if self.dark_mode:
-            return """
-                QDialog {
-                    background-color: #252526;
-                    color: #dcdcdc;
-                }
+    def _dark_dialog_stylesheet(self):
+        """Dark dialog stylesheet (base for the Mattscreative theme too)"""
+        return """
+            QDialog {
+                background-color: #252526;
+                color: #dcdcdc;
+            }
                 QLabel {
                     color: #dcdcdc;
                     background-color: transparent;
@@ -1024,9 +1037,47 @@ class AffinityInstallerGUI(QMainWindow):
                 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
                     height: 0px;
                 }
-            """
-        else:
-            return """
+    """
+
+    def _mattscreative_palette_style(self, dark_stylesheet):
+        """Recolor a dark stylesheet with the Mattscreative palette"""
+        return (
+            dark_stylesheet
+            .replace("#252526", "#161022")
+            .replace("#3c3c3c", "#1A0A2E")
+            .replace("#3d3d3d", "#241238")
+            .replace("#323232", "#241238")
+            .replace("#2d2d2d", "#1A0A2E")
+            .replace("#4a4a4a", "#241238")
+            .replace("#555555", "#3a2a5e")
+            .replace("#6a6a6a", "#4a3a6e")
+            .replace("#666666", "#4a3a6e")
+            .replace("#b0b0b0", "#B8A9C9")
+            .replace("#4ec9b0", "#04BEEF")
+            .replace("#5dd9c0", "#2ac8f5")
+            .replace("#3db9a0", "#04A8CC")
+            .replace("#2da990", "#0795B8")
+            .replace("#cccccc", "#B8A9C9")
+            .replace("#dcdcdc", "#e6e0ee")
+            .replace("#f0f0f0", "#FFFFFF")
+            .replace("#1e1e1e", "#0F0818")
+        )
+
+    def _mattscreative_dialog_stylesheet(self):
+        """Mattscreative dialog stylesheet - deep purple base with gold and cyan accents"""
+        return self._mattscreative_palette_style(self._dark_dialog_stylesheet())
+
+    def get_dialog_stylesheet(self):
+        """Get the appropriate stylesheet for dialogs based on current theme - clean modern style"""
+        if self.theme == "mattscreative":
+            return self._mattscreative_dialog_stylesheet()
+        if self.dark_mode:
+            return self._dark_dialog_stylesheet()
+        return self._light_dialog_stylesheet()
+
+    def _light_dialog_stylesheet(self):
+        """Light dialog stylesheet - clean modern style"""
+        return """
                 QDialog {
                     background-color: #ffffff;
                     color: #2d2d2d;
@@ -1204,16 +1255,23 @@ class AffinityInstallerGUI(QMainWindow):
                 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
                     height: 0px;
                 }
-            """
+        """
 
     def get_messagebox_stylesheet(self):
         """Get the appropriate stylesheet for message boxes based on current theme - clean modern style"""
+        if self.theme == "mattscreative":
+            return self._mattscreative_palette_style(self._dark_messagebox_stylesheet())
         if self.dark_mode:
-            return """
-                QMessageBox {
-                    background-color: #252526;
-                    color: #dcdcdc;
-                }
+            return self._dark_messagebox_stylesheet()
+        return self._light_messagebox_stylesheet()
+
+    def _dark_messagebox_stylesheet(self):
+        """Dark message box stylesheet (base for the Mattscreative theme too)"""
+        return """
+            QMessageBox {
+                background-color: #252526;
+                color: #dcdcdc;
+            }
                 QMessageBox QLabel {
                     color: #dcdcdc;
                     background-color: transparent;
@@ -1250,9 +1308,11 @@ class AffinityInstallerGUI(QMainWindow):
                 QMessageBox QPushButton[default="true"]:pressed {
                     background-color: #3db9a0;
                 }
-            """
-        else:
-            return """
+        """
+
+    def _light_messagebox_stylesheet(self):
+        """Light message box stylesheet"""
+        return """
                 QMessageBox {
                     background-color: #ffffff;
                     color: #2d2d2d;
@@ -1293,7 +1353,7 @@ class AffinityInstallerGUI(QMainWindow):
                 QMessageBox QPushButton[default="true"]:pressed {
                     background-color: #3d8b40;
                 }
-            """
+        """
 
     def show_donation_dialog(self):
         """Show a donation dialog with PayPal and Ko-fi links"""
@@ -1368,11 +1428,15 @@ class AffinityInstallerGUI(QMainWindow):
             )
 
     def apply_theme(self):
-        """Apply current theme (dark or light)"""
-        if self.dark_mode:
+        """Apply current theme (dark, light, or mattscreative)"""
+        self.dark_mode = self.theme != "light"
+        if self.theme == "dark":
             self._apply_dark_theme()
-        else:
+        elif self.theme == "light":
             self._apply_light_theme()
+        else:
+            self._apply_mattscreative_theme()
+        self._update_section_titles()
 
     def _apply_dark_theme(self):
         """Apply modern dark theme with card-based design"""
@@ -1421,7 +1485,8 @@ class AffinityInstallerGUI(QMainWindow):
                 color: #e0e0e0;
                 border: 1px solid #444444;
                 border-radius: 8px;
-                font-size: 18px;
+                font-size: 13px;
+                font-weight: 500;
             }
             QPushButton#themeToggle:hover {
                 background-color: #3d3d3d;
@@ -1450,6 +1515,14 @@ class AffinityInstallerGUI(QMainWindow):
             }
             QLabel#sectionTitle {
                 font-size: 16px;
+                font-weight: 600;
+                color: #ffffff;
+                background-color: transparent;
+                border: none;
+                padding: 0px;
+            }
+            QLabel#statusTitle {
+                font-size: 18px;
                 font-weight: 600;
                 color: #ffffff;
                 background-color: transparent;
@@ -1544,12 +1617,11 @@ class AffinityInstallerGUI(QMainWindow):
                 background-color: #2d2d2d;
                 color: #e0e0e0;
                 border: 1px solid #3d3d3d;
-                padding: 12px 16px;
-                border-radius: 8px;
-                font-size: 13px;
+                padding: 12px 24px;
+                border-radius: 100px;
+                font-size: 14px;
                 font-weight: 500;
                 text-align: left;
-                min-width: 200px;
             }
             QPushButton#actionButton:hover {
                 background-color: #353535;
@@ -1687,7 +1759,8 @@ class AffinityInstallerGUI(QMainWindow):
                 color: #1d1d1f;
                 border: 1px solid #d0d0d0;
                 border-radius: 8px;
-                font-size: 18px;
+                font-size: 13px;
+                font-weight: 500;
             }
             QPushButton#themeToggle:hover {
                 background-color: #d5d5d7;
@@ -1716,6 +1789,14 @@ class AffinityInstallerGUI(QMainWindow):
             }
             QLabel#sectionTitle {
                 font-size: 16px;
+                font-weight: 600;
+                color: #1d1d1f;
+                background-color: transparent;
+                border: none;
+                padding: 0px;
+            }
+            QLabel#statusTitle {
+                font-size: 18px;
                 font-weight: 600;
                 color: #1d1d1f;
                 background-color: transparent;
@@ -1810,12 +1891,11 @@ class AffinityInstallerGUI(QMainWindow):
                 background-color: #f5f5f7;
                 color: #1d1d1f;
                 border: 1px solid #e5e5e7;
-                padding: 12px 16px;
-                border-radius: 8px;
-                font-size: 13px;
+                padding: 12px 24px;
+                border-radius: 100px;
+                font-size: 14px;
                 font-weight: 500;
                 text-align: left;
-                min-width: 200px;
             }
             QPushButton#actionButton:hover {
                 background-color: #ffffff;
@@ -1906,6 +1986,284 @@ class AffinityInstallerGUI(QMainWindow):
             }
         """)
 
+    def _apply_mattscreative_theme(self):
+        """Apply the Mattscreative theme - deep purple base with gold and cyan accents"""
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #120B1F;
+            }
+            QWidget {
+                background-color: #120B1F;
+                color: #e6e0ee;
+                font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+                font-size: 13px;
+            }
+            /* Top Bar */
+            QFrame#topBar {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #1A0A2E, stop:1 #120B1F);
+                border-bottom: 2px solid #3a2a5e;
+            }
+            QLabel#titleLabel {
+                font-size: 20px;
+                font-weight: 600;
+                color: #ffffff;
+                letter-spacing: -0.5px;
+                background-color: transparent;
+                border: none;
+                padding: 0px;
+            }
+            QLabel#statusIndicator {
+                font-size: 12px;
+                color: #B8A9C9;
+                background-color: transparent;
+                border: none;
+                padding: 0px;
+            }
+            QLabel#statusText {
+                font-size: 12px;
+                color: #B8A9C9;
+                font-weight: 500;
+                background-color: transparent;
+                border: none;
+                padding: 0px;
+            }
+            QPushButton#themeToggle {
+                background-color: #1A0A2E;
+                color: #ffffff;
+                border: 1px solid #3a2a5e;
+                border-radius: 8px;
+                font-size: 13px;
+                font-weight: 500;
+            }
+            QPushButton#themeToggle:hover {
+                background-color: #241238;
+                border-color: #04BEEF;
+            }
+            QPushButton#donateButton {
+                background-color: transparent;
+                color: #FDB513;
+                border: 1px solid #FDB513;
+                border-radius: 8px;
+                font-size: 13px;
+                font-weight: 600;
+            }
+            QPushButton#donateButton:hover {
+                background-color: #FDB513;
+                color: #120B1F;
+            }
+            /* Content Area */
+            QWidget#contentArea {
+                background-color: #120B1F;
+            }
+            /* Status Card */
+            QFrame#statusCard {
+                background-color: #161022;
+                border: 1px solid #2a1c3f;
+                border-radius: 12px;
+            }
+            QLabel#sectionTitle {
+                font-size: 15px;
+                font-weight: 600;
+                color: #ffffff;
+                background-color: transparent;
+                border: none;
+                padding: 0px;
+            }
+            QLabel#statusTitle {
+                font-size: 18px;
+                font-weight: 600;
+                color: #ffffff;
+                background-color: transparent;
+                border-top: none;
+                border-left: none;
+                border-right: none;
+                border-bottom: 2px solid #FDB513;
+                padding: 0px 0px 6px 0px;
+            }
+            /* Progress Section */
+            QFrame#progressSection {
+                background-color: #161022;
+                border: 1px solid #2a1c3f;
+                border-radius: 8px;
+                padding: 12px;
+            }
+            QLabel#progressLabel {
+                font-size: 12px;
+                font-weight: 500;
+                color: #B8A9C9;
+                padding: 8px 12px;
+                background-color: transparent;
+                border: none;
+                border-radius: 0px;
+            }
+            QProgressBar#progressBar {
+                border: none;
+                background-color: #1A0A2E;
+                height: 8px;
+                border-radius: 4px;
+            }
+            QProgressBar#progressBar::chunk {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #04BEEF, stop:1 #08A9D2);
+                border-radius: 4px;
+            }
+            QPushButton#cancelButton {
+                background-color: #FF6B6B;
+                color: #ffffff;
+                border: none;
+                border-radius: 6px;
+                font-size: 16px;
+                font-weight: bold;
+            }
+            QPushButton#cancelButton:hover {
+                background-color: #FF8080;
+            }
+            QPushButton#cancelButton:pressed {
+                background-color: #E05555;
+            }
+            /* Log Section */
+            QFrame#logSection {
+                background-color: #161022;
+                border: 1px solid #2a1c3f;
+                border-radius: 8px;
+                padding: 12px;
+            }
+            QFrame#zoomToolbar {
+                background-color: transparent;
+                border: none;
+            }
+            QPushButton#zoomButton {
+                background-color: #1A0A2E;
+                color: #B8A9C9;
+                border: 1px solid #3a2a5e;
+                border-radius: 6px;
+            }
+            QPushButton#zoomButton:hover {
+                background-color: #241238;
+                border-color: #04BEEF;
+                color: #ffffff;
+            }
+            QPushButton#zoomButton:disabled {
+                background-color: #161022;
+                color: #6a5b80;
+                border-color: #2a1c3f;
+            }
+            QTextEdit#logText {
+                background-color: #0F0818;
+                color: #d9d2e3;
+                border: 1px solid #2a1c3f;
+                border-radius: 8px;
+                font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+                font-size: 11px;
+                padding: 12px;
+                selection-background-color: #04BEEF;
+            }
+            /* Button Cards */
+            QFrame#buttonCard {
+                background-color: #161022;
+                border: 1px solid #2a1c3f;
+                border-radius: 12px;
+            }
+            QPushButton#actionButton {
+                background-color: #1A0A2E;
+                color: #ffffff;
+                border: 1px solid #3a2a5e;
+                padding: 12px 24px;
+                border-radius: 100px;
+                font-size: 14px;
+                font-weight: 500;
+                text-align: left;
+            }
+            QPushButton#actionButton:hover {
+                background-color: #241238;
+                border-color: #04BEEF;
+                color: #ffffff;
+            }
+            QPushButton#actionButton:pressed {
+                background-color: #161022;
+                border-color: #3a2a5e;
+            }
+            QPushButton#actionButton:disabled {
+                background-color: #161022;
+                color: #6a5b80;
+                border-color: #2a1c3f;
+            }
+            QPushButton#actionButton[class="primary"] {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #04BEEF, stop:1 #08A9D2);
+                color: #0F0818;
+                font-weight: 600;
+                font-size: 14px;
+                border: none;
+            }
+            QPushButton#actionButton[class="primary"]:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #2ac8f5, stop:1 #04BEEF);
+            }
+            QPushButton#actionButton[class="primary"]:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #04A8CC, stop:1 #0795B8);
+            }
+            /* Scroll Area */
+            QScrollArea#rightScroll {
+                background-color: #120B1F;
+                border: none;
+            }
+            QScrollBar:vertical {
+                background-color: #120B1F;
+                width: 10px;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #3a2a5e;
+                border-radius: 5px;
+                min-height: 30px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: #4a3a6e;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+            QToolTip {
+                background-color: #1A0A2E;
+                color: #ffffff;
+                border: 1px solid #3a2a5e;
+                padding: 6px;
+                border-radius: 6px;
+                font-size: 11px;
+            }
+            QDialog {
+                background-color: #161022;
+                border-radius: 12px;
+            }
+            QDialog QLabel {
+                background-color: transparent;
+                border: none;
+                padding: 0px;
+            }
+            QDialog QLabel#titleLabel {
+                background-color: transparent;
+                border: none;
+                padding: 0px;
+            }
+            QDialog QLabel#descriptionLabel {
+                background-color: transparent;
+                border: none;
+                padding: 0px;
+            }
+            QMessageBox {
+                background-color: #161022;
+                border-radius: 12px;
+            }
+            QMessageBox QLabel {
+                background-color: transparent;
+                border: none;
+                padding: 0px;
+            }
+        """)
+
     def _update_theme_button_style(self):
         """Update theme toggle button styling based on current theme"""
         pass
@@ -1915,65 +2273,103 @@ class AffinityInstallerGUI(QMainWindow):
         pass
 
     def _update_right_scroll_style(self):
-        """Update right scroll area styling based on current theme"""
+        """Update side scroll area styling based on current theme"""
+        scrolls = []
+        if hasattr(self, "left_scroll"):
+            scrolls.append(self.left_scroll)
         if hasattr(self, "right_scroll"):
-            if self.dark_mode:
-                self.right_scroll.setStyleSheet("""
-                    QScrollArea {
-                        background-color: #1c1c1c;
-                        border: none;
-                    }
-                    QScrollBar:vertical {
-                        background-color: #1c1c1c;
-                        width: 12px;
-                        border-radius: 6px;
-                    }
-                    QScrollBar::handle:vertical {
-                        background-color: #555555;
-                        border-radius: 6px;
-                        min-height: 30px;
-                    }
-                    QScrollBar::handle:vertical:hover {
-                        background-color: #6a6a6a;
-                    }
-                    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                        height: 0px;
-                    }
-                    QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                        background: none;
-                    }
-                """)
-            else:
-                self.right_scroll.setStyleSheet("""
-                    QScrollArea {
-                        background-color: #f5f5f5;
-                        border: none;
-                    }
-                    QScrollBar:vertical {
-                        background-color: #f5f5f5;
-                        width: 12px;
-                        border-radius: 6px;
-                    }
-                    QScrollBar::handle:vertical {
-                        background-color: #c0c0c0;
-                        border-radius: 6px;
-                        min-height: 30px;
-                    }
-                    QScrollBar::handle:vertical:hover {
-                        background-color: #a0a0a0;
-                    }
-                    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                        height: 0px;
-                    }
-                    QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                        background: none;
-                    }
-                """)
+            scrolls.append(self.right_scroll)
+
+        if self.theme == "mattscreative":
+            stylesheet = """
+                QScrollArea {
+                    background-color: #120B1F;
+                    border: none;
+                }
+                QScrollBar:vertical {
+                    background-color: #120B1F;
+                    width: 12px;
+                    border-radius: 6px;
+                }
+                QScrollBar::handle:vertical {
+                    background-color: #3a2a5e;
+                    border-radius: 6px;
+                    min-height: 30px;
+                }
+                QScrollBar::handle:vertical:hover {
+                    background-color: #4a3a6e;
+                }
+                QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                    height: 0px;
+                }
+                QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+                    background: none;
+                }
+            """
+        elif self.dark_mode:
+            stylesheet = """
+                QScrollArea {
+                    background-color: #1c1c1c;
+                    border: none;
+                }
+                QScrollBar:vertical {
+                    background-color: #1c1c1c;
+                    width: 12px;
+                    border-radius: 6px;
+                }
+                QScrollBar::handle:vertical {
+                    background-color: #555555;
+                    border-radius: 6px;
+                    min-height: 30px;
+                }
+                QScrollBar::handle:vertical:hover {
+                    background-color: #6a6a6a;
+                }
+                QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                    height: 0px;
+                }
+                QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+                    background: none;
+                }
+            """
+        else:
+            stylesheet = """
+                QScrollArea {
+                    background-color: #f5f5f5;
+                    border: none;
+                }
+                QScrollBar:vertical {
+                    background-color: #f5f5f5;
+                    width: 12px;
+                    border-radius: 6px;
+                }
+                QScrollBar::handle:vertical {
+                    background-color: #c0c0c0;
+                    border-radius: 6px;
+                    min-height: 30px;
+                }
+                QScrollBar::handle:vertical:hover {
+                    background-color: #a0a0a0;
+                }
+                QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                    height: 0px;
+                }
+                QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+                    background: none;
+                }
+            """
+        for scroll in scrolls:
+            scroll.setStyleSheet(stylesheet)
 
     def _update_progress_label_style(self):
         """Update progress label styling based on current theme"""
         if hasattr(self, "progress_label"):
-            if self.dark_mode:
+            if self.theme == "mattscreative":
+                self.progress_label.setStyleSheet(
+                    "font-size: 11px; font-weight: 500; color: #B8A9C9; "
+                    "padding: 5px 10px; background-color: transparent; border: none; border-radius: 0px;"
+                )
+            elif self.dark_mode:
                 self.progress_label.setStyleSheet(
                     "font-size: 11px; font-weight: 500; color: #dcdcdc; "
                     "padding: 5px 10px; background-color: transparent; border: none; border-radius: 0px;"
@@ -1983,6 +2379,18 @@ class AffinityInstallerGUI(QMainWindow):
                     "font-size: 11px; font-weight: 500; color: #2d2d2d; "
                     "padding: 5px 10px; background-color: transparent; border: none; border-radius: 0px;"
                 )
+
+    def _update_section_titles(self):
+        """Uppercase section titles with letter spacing for the Mattscreative theme"""
+        for label, original_title in getattr(self, "_section_title_labels", []):
+            font = label.font()
+            if self.theme == "mattscreative":
+                label.setText(original_title.upper())
+                font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 110)
+            else:
+                label.setText(original_title)
+                font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 100)
+            label.setFont(font)
 
     def create_ui(self):
         """Create the modern user interface"""
@@ -2082,10 +2490,13 @@ class AffinityInstallerGUI(QMainWindow):
         self.donate_btn.clicked.connect(self.show_donation_dialog)
         top_bar_layout.addWidget(self.donate_btn)
 
-        self.theme_toggle_btn = QPushButton("☀")
+        self.theme_toggle_btn = QPushButton(self._theme_display_names[self.theme])
         self.theme_toggle_btn.setObjectName("themeToggle")
-        self.theme_toggle_btn.setToolTip("Switch Theme")
-        self.theme_toggle_btn.setFixedSize(icon_size, icon_size)
+        next_theme = self._themes[(self._themes.index(self.theme) + 1) % len(self._themes)]
+        self.theme_toggle_btn.setToolTip(
+            "Switch to {} Theme".format(self._theme_display_names[next_theme])
+        )
+        self.theme_toggle_btn.setFixedSize(max(icon_size * 3, 118), icon_size)
         self.theme_toggle_btn.clicked.connect(self.toggle_theme)
         top_bar_layout.addWidget(self.theme_toggle_btn)
 
@@ -2098,42 +2509,59 @@ class AffinityInstallerGUI(QMainWindow):
         if screen_width < 1024:
             content_spacing = 12
             content_margin = 12
-            right_panel_min = 280
-            right_panel_max = 320
+            right_panel_max = 360
         elif screen_width < 1280:
             content_spacing = 16
             content_margin = 16
-            right_panel_min = 320
-            right_panel_max = 380
+            right_panel_max = 400
         else:
             content_spacing = 20
             content_margin = 20
-            right_panel_min = 360
-            right_panel_max = 420
+            right_panel_max = 440
 
         content_layout.setSpacing(content_spacing)
         content_layout.setContentsMargins(
             content_margin, content_margin, content_margin, content_margin
         )
 
-        left_panel = self.create_status_section()
-        content_layout.addWidget(left_panel, stretch=2)
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        left_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        left_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        left_scroll.setObjectName("leftScroll")
+        self.left_scroll = left_scroll
+        self._update_right_scroll_style()
+
+        left_panel = self.create_button_sections()
+        left_scroll.setWidget(left_panel)
+        left_scroll.setMinimumWidth(left_panel.minimumSizeHint().width() + 18)
+        left_scroll.setMaximumWidth(right_panel_max)
+
+        content_layout.addWidget(left_scroll, stretch=2)
+
+        status_panel = self.create_status_section()
+        content_layout.addWidget(status_panel, stretch=3)
 
         right_scroll = QScrollArea()
         right_scroll.setWidgetResizable(True)
-        right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        right_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
         right_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         right_scroll.setFrameShape(QFrame.Shape.NoFrame)
         right_scroll.setObjectName("rightScroll")
         self.right_scroll = right_scroll
         self._update_right_scroll_style()
 
-        right_panel = self.create_button_sections()
+        right_panel = self.create_troubleshooting_sections()
         right_scroll.setWidget(right_panel)
-        right_scroll.setMinimumWidth(right_panel_min)
+        right_scroll.setMinimumWidth(right_panel.minimumSizeHint().width() + 18)
         right_scroll.setMaximumWidth(right_panel_max)
 
-        content_layout.addWidget(right_scroll, stretch=1)
+        content_layout.addWidget(right_scroll, stretch=2)
 
         main_layout.addWidget(content_widget, stretch=1)
 
@@ -2163,10 +2591,11 @@ class AffinityInstallerGUI(QMainWindow):
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
         title = QLabel("Status & Log")
-        title.setObjectName("sectionTitle")
+        title.setObjectName("statusTitle")
         header.addWidget(title)
         header.addStretch()
         card_layout.addLayout(header)
+        self._section_title_labels.append((title, "Status & Log"))
 
         progress_section = QFrame()
         progress_section.setObjectName("progressSection")
@@ -2396,6 +2825,48 @@ class AffinityInstallerGUI(QMainWindow):
         )
         container_layout.addWidget(app_group)
 
+        launch_group = self.create_button_group(
+            "Launch",
+            [
+                (
+                    "Launch Affinity v3",
+                    self.launch_affinity_v3,
+                    "Start Affinity V3 unified application",
+                    "play",
+                ),
+            ],
+        )
+        container_layout.addWidget(launch_group)
+
+        other_group = self.create_button_group(
+            "Other",
+            [
+                ("Exit", self.close, "Close the installer", "exit"),
+            ],
+        )
+        container_layout.addWidget(other_group)
+
+        container_layout.addStretch()
+
+        return container
+
+    def create_troubleshooting_sections(self):
+        """Create the Troubleshooting and Patches button sections"""
+        screen = self.screen().availableGeometry()
+        screen_width = screen.width()
+
+        if screen_width < 1024:
+            container_spacing = 12
+        elif screen_width < 1280:
+            container_spacing = 14
+        else:
+            container_spacing = 16
+
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
+        container_layout.setSpacing(container_spacing)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+
         troubleshoot_group = self.create_button_group(
             "Troubleshooting",
             [
@@ -2488,27 +2959,6 @@ class AffinityInstallerGUI(QMainWindow):
         )
         container_layout.addWidget(patches_group)
 
-        launch_group = self.create_button_group(
-            "Launch",
-            [
-                (
-                    "Launch Affinity v3",
-                    self.launch_affinity_v3,
-                    "Start Affinity V3 unified application",
-                    "play",
-                ),
-            ],
-        )
-        container_layout.addWidget(launch_group)
-
-        other_group = self.create_button_group(
-            "Other",
-            [
-                ("Exit", self.close, "Close the installer", "exit"),
-            ],
-        )
-        container_layout.addWidget(other_group)
-
         container_layout.addStretch()
 
         return container
@@ -2536,12 +2986,14 @@ class AffinityInstallerGUI(QMainWindow):
 
         card = QFrame()
         card.setObjectName("buttonCard")
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         card_layout = QVBoxLayout(card)
         card_layout.setSpacing(card_spacing)
         card_layout.setContentsMargins(card_margin, 16, card_margin, card_margin)
 
         title_label = QLabel(title)
         title_label.setObjectName("sectionTitle")
+        self._section_title_labels.append((title_label, title))
         if screen_width < 1024:
             title_label.setStyleSheet(
                 "font-size: 14px; font-weight: 600; background-color: transparent; border: none; padding: 0px;"
@@ -2595,15 +3047,11 @@ class AffinityInstallerGUI(QMainWindow):
                 btn.setToolTip(tooltip)
 
             btn.setMinimumHeight(button_height)
-            btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            if screen_width < 800:
-                btn.setMinimumWidth(220)
-            elif screen_width < 1024:
-                btn.setMinimumWidth(240)
-            else:
-                btn.setMinimumWidth(260)
-
+            btn.setSizePolicy(
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+            )
             buttons_layout.addWidget(btn)
+            self._all_action_buttons.append(btn)
 
             if (
                 button_refs is not None
@@ -2618,6 +3066,23 @@ class AffinityInstallerGUI(QMainWindow):
         card_layout.addLayout(buttons_layout)
 
         return card
+
+    def _normalize_action_buttons(self):
+        """Give all action buttons a uniform height and let them stretch to fill
+        their panel so they grow/shrink with the window and are never clipped."""
+        buttons = [b for b in self._all_action_buttons if b is not None]
+        if not buttons:
+            return
+        try:
+            max_h = max(b.sizeHint().height() for b in buttons)
+            for b in buttons:
+                b.setMinimumHeight(max_h)
+                b.setMaximumHeight(max_h)
+                b.setSizePolicy(
+                    QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+                )
+        except Exception:
+            pass
 
     def _handle_button_click(self, button, command):
         """Record last clicked button and invoke the original command."""
@@ -2641,7 +3106,10 @@ class AffinityInstallerGUI(QMainWindow):
                 if current_size.isValid()
                 else max(20, button.sizeHint().height() - 6)
             )
-            color = QColor("#8ff361") if self.dark_mode else QColor("#4caf50")
+            if self.theme == "mattscreative":
+                color = QColor("#04BEEF")
+            else:
+                color = QColor("#8ff361") if self.dark_mode else QColor("#4caf50")
             state = {
                 "angle": 0,
                 "timer": QTimer(self),
@@ -3360,8 +3828,7 @@ class AffinityInstallerGUI(QMainWindow):
         dialog.setSizeGripEnabled(True)
 
         # Apply theme stylesheet
-        if self.dark_mode:
-            dialog_style = """
+        dark_style = """
                 QDialog {
                     background-color: #252526;
                     color: #dcdcdc;
@@ -3470,7 +3937,11 @@ class AffinityInstallerGUI(QMainWindow):
                 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
                     height: 0px;
                 }
-            """
+        """
+        if self.theme == "mattscreative":
+            dialog_style = self._mattscreative_palette_style(dark_style)
+        elif self.dark_mode:
+            dialog_style = dark_style
         else:
             dialog_style = """
                 QDialog {
@@ -6099,8 +6570,7 @@ class AffinityInstallerGUI(QMainWindow):
         dialog.setSizeGripEnabled(True)
 
         # Apply theme stylesheet matching main UI
-        if self.dark_mode:
-            dialog_style = """
+        dark_style = """
                 QDialog {
                     background-color: #252526;
                     color: #dcdcdc;
@@ -6183,7 +6653,11 @@ class AffinityInstallerGUI(QMainWindow):
                 QPushButton#okButton:pressed {
                     background-color: #3db9a0;
                 }
-            """
+        """
+        if self.theme == "mattscreative":
+            dialog_style = self._mattscreative_palette_style(dark_style)
+        elif self.dark_mode:
+            dialog_style = dark_style
         else:
             dialog_style = """
                 QDialog {
@@ -15828,8 +16302,7 @@ Would you like to continue with {distro_name} anyway?"""
         dialog.setSizeGripEnabled(True)
 
         # Apply theme stylesheet matching main UI
-        if self.dark_mode:
-            dialog_style = """
+        dark_style = """
                 QDialog {
                     background-color: #252526;
                     color: #dcdcdc;
@@ -15932,7 +16405,11 @@ Would you like to continue with {distro_name} anyway?"""
                 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
                     height: 0px;
                 }
-            """
+        """
+        if self.theme == "mattscreative":
+            dialog_style = self._mattscreative_palette_style(dark_style)
+        elif self.dark_mode:
+            dialog_style = dark_style
         else:
             dialog_style = """
                 QDialog {
@@ -18307,6 +18784,14 @@ def main():
         return
 
     kill_stalled_wine_processes()
+
+    # Enable proper HiDPI / fractional display scaling support
+    try:
+        QApplication.setHighDpiScaleFactorRoundingPolicy(
+            Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+        )
+    except Exception:
+        pass
 
     app_init_start = time_module.time()
     app = QApplication(sys.argv)
