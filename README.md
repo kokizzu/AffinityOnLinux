@@ -82,6 +82,16 @@ sudo apt install python3-pyqt6.qtsvg
 - **[OpenCL Guide](docs/OpenCL-Guide.md)** - Detailed OpenCL configuration
 - **[Legacy Scripts](docs/LEGACY-SCRIPTS.md)** - Command-line installation scripts
 
+### Per-Distribution Dependencies
+- **[Arch Linux](docs/Arch-Linux.md)** - Arch, Artix, CachyOS, EndeavourOS, XeroLinux
+- **[Fedora](docs/Fedora.md)** - Fedora, Nobara
+- **[Ubuntu](docs/Ubuntu.md)** - Ubuntu (24.04+ and older)
+- **[Linux Mint](docs/Linux-Mint.md)**
+- **[Zorin OS](docs/Zorin-OS.md)**
+- **[Pop!_OS](docs/Pop-OS.md)**
+- **[PikaOS](docs/PikaOS.md)**
+- **[openSUSE](docs/openSUSE.md)** - Tumbleweed, Leap
+
 ### Additional Resources
 - **[Known Issues](docs/Known-issues.md)** - Common problems and solutions
 - **[Settings Guide](Guide/Settings.md)** - Configuration options
