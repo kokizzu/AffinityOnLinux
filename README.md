@@ -16,7 +16,8 @@
 
 A comprehensive solution for running [Affinity software](https://www.affinity.studio/) on GNU/Linux systems using Wine with hardware acceleration support.
 
-<img width="1275" height="1323" alt="Affinity Linux Installer" src="https://github.com/user-attachments/assets/b04e7307-ed95-484d-931a-713aadfe6c47" />
+<img width="1277" height="1361" alt="image" src="https://github.com/user-attachments/assets/8def9258-46f4-4301-be0f-9e8ebd70bd01" />
+
 
 ## What is This?
 
