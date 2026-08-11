@@ -309,6 +309,7 @@ class AffinityInstallerGUI(QMainWindow):
     show_main_menu_signal = pyqtSignal()
     window_icon_signal = pyqtSignal(str)
     apply_auto_dpi_signal = pyqtSignal()
+    cancel_button_signal = pyqtSignal(bool)
 
     def __init__(self):
         startup_start = time.time()
@@ -393,6 +394,7 @@ class AffinityInstallerGUI(QMainWindow):
         self.show_main_menu_signal.connect(self.show_main_menu)
         self.window_icon_signal.connect(self._set_window_icon_safe)
         self.apply_auto_dpi_signal.connect(self._apply_auto_dpi_on_main_thread)
+        self.cancel_button_signal.connect(self._set_cancel_button_visible_safe)
         step_start = log_timing("Signal connections", step_start)
 
         self.create_ui()
@@ -2839,6 +2841,11 @@ class AffinityInstallerGUI(QMainWindow):
             except Exception:
                 pass
 
+    def _set_cancel_button_visible_safe(self, visible):
+        """Show/hide the cancel button (called from main thread via signal)"""
+        if hasattr(self, "cancel_btn"):
+            self.cancel_btn.setVisible(visible)
+
     def start_operation(self, operation_name):
         """Mark the start of an operation and show cancel button"""
         self.operation_cancelled = False
@@ -2848,15 +2855,13 @@ class AffinityInstallerGUI(QMainWindow):
         if self._last_clicked_button is not None:
             self._operation_button = self._last_clicked_button
             self.show_spinner_signal.emit(self._operation_button)
-        if hasattr(self, "cancel_btn"):
-            self.cancel_btn.setVisible(True)
+        self.cancel_button_signal.emit(True)
 
     def end_operation(self):
         """Mark the end of an operation: restore UI, reset progress, toggle cancel."""
         self.operation_in_progress = False
         self.current_operation = None
-        if hasattr(self, "cancel_btn"):
-            self.cancel_btn.setVisible(False)
+        self.cancel_button_signal.emit(False)
         if self._operation_button is not None:
             self.hide_spinner_signal.emit(self._operation_button)
             self._operation_button = None
@@ -18051,6 +18056,38 @@ Would you like to continue with {distro_name} anyway?"""
         thanks.exec()
 
 
+def kill_stalled_wine_processes():
+    """Kill winetricks, winedevice.exe, and wineserver processes so the installer
+    starts cleanly. Only run when the GUI opens - leftover Wine processes (especially
+    a stalled winetricks) cause lockups if the installer starts on top of them."""
+    targets = [
+        ("winetricks", ["winetricks"]),
+        ("winedevice.exe", ["winedevice.exe", "winedevice"]),
+        ("wineserver", ["wineserver"]),
+    ]
+    killed_any = False
+    for display_name, patterns in targets:
+        for pattern in patterns:
+            try:
+                subprocess.run(
+                    ["pkill", "-9", "-x", pattern],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                result = subprocess.run(
+                    ["pkill", "-9", "-f", pattern],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                if result.returncode == 0:
+                    killed_any = True
+                    print(f"[Cleanup] Killed leftover {display_name} process(es)")
+            except Exception:
+                continue
+    if not killed_any:
+        print("[Cleanup] No stale Wine processes found - starting clean")
+
+
 def main():
     """Main entry point"""
     import time as time_module
@@ -18065,6 +18102,8 @@ def main():
             "This installer is designed for Linux systems only.",
         )
         return
+
+    kill_stalled_wine_processes()
 
     app_init_start = time_module.time()
     app = QApplication(sys.argv)
