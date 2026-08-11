@@ -1310,6 +1310,7 @@ class AffinityInstallerGUI(QMainWindow):
         title = QLabel("Support This Project")
         title.setObjectName("titleLabel")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         layout.addWidget(title)
 
         message = QLabel(
@@ -1319,6 +1320,7 @@ class AffinityInstallerGUI(QMainWindow):
         message.setObjectName("descriptionLabel")
         message.setWordWrap(True)
         message.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        message.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         layout.addWidget(message)
 
         buttons_layout = QHBoxLayout()
@@ -3040,6 +3042,7 @@ class AffinityInstallerGUI(QMainWindow):
             msg_box.setIcon(QMessageBox.Icon.Information)
 
         msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg_box.adjustSize()
         msg_box.exec()
 
     def _request_sudo_password_safe(self):
@@ -3137,6 +3140,9 @@ class AffinityInstallerGUI(QMainWindow):
         main_layout.addLayout(button_layout)
 
         password_input.returnPressed.connect(dialog.accept)
+
+        dialog.layout().activate()
+        dialog.adjustSize()
 
         dialog.show()
         dialog.raise_()
@@ -3748,6 +3754,14 @@ class AffinityInstallerGUI(QMainWindow):
 
         main_layout.addLayout(button_layout)
 
+        # Ensure the dialog is large enough to show all content; clamp inside min/max.
+        hint = dialog.sizeHint()
+        target_w = min(max(default_width, hint.width()), max_width)
+        target_h = min(max(default_height, hint.height()), max_height)
+        target_w = max(target_w, min_width)
+        target_h = max(target_h, min_height)
+        dialog.resize(target_w, target_h)
+
         # Show dialog
         dialog.show()
         dialog.raise_()
@@ -3800,6 +3814,7 @@ class AffinityInstallerGUI(QMainWindow):
         msg_box.setText(message)
         msg_box.setStandardButtons(qbuttons)
         msg_box.setStyleSheet(self.get_messagebox_stylesheet())
+        msg_box.adjustSize()
         reply = msg_box.exec()
 
         # Store response
@@ -6386,6 +6401,14 @@ class AffinityInstallerGUI(QMainWindow):
 
         main_layout.addLayout(button_layout)
 
+        # Ensure the dialog is large enough to show all content; clamp inside min/max.
+        hint = dialog.sizeHint()
+        target_w = min(max(default_width, hint.width()), max_width)
+        target_h = min(max(default_height, hint.height()), max_height)
+        target_w = max(target_w, min_width)
+        target_h = max(target_h, min_height)
+        dialog.resize(target_w, target_h)
+
         # Show dialog
         dialog.show()
         dialog.raise_()
@@ -6547,14 +6570,20 @@ class AffinityInstallerGUI(QMainWindow):
             min_height = min(300, int(screen_height * 0.8))
             default_width = min(500, int(screen_width * 0.85))
             default_height = min(350, int(screen_height * 0.7))
+            max_width = int(screen_width * 0.95)
+            max_height = int(screen_height * 0.85)
         else:
             min_width = 450
             min_height = 320
             default_width = 550
             default_height = 380
+            max_width = 800
+            max_height = 700
 
         dialog.setMinimumWidth(min_width)
         dialog.setMinimumHeight(min_height)
+        dialog.setMaximumWidth(max_width)
+        dialog.setMaximumHeight(max_height)
         dialog.resize(default_width, default_height)
         dialog.setSizeGripEnabled(True)
 
@@ -6667,6 +6696,14 @@ class AffinityInstallerGUI(QMainWindow):
         button_layout.addWidget(ok_btn)
 
         main_layout.addLayout(button_layout)
+
+        # Ensure the dialog is large enough to show all content; clamp inside min/max.
+        hint = dialog.sizeHint()
+        target_w = min(max(default_width, hint.width()), max_width)
+        target_h = min(max(default_height, hint.height()), max_height)
+        target_w = max(target_w, min_width)
+        target_h = max(target_h, min_height)
+        dialog.resize(target_w, target_h)
 
         # Show dialog
         dialog.show()
@@ -7968,6 +8005,14 @@ class AffinityInstallerGUI(QMainWindow):
 
             main_layout.addLayout(button_layout)
 
+            # Ensure the dialog is large enough to show all content; clamp inside min/max.
+            hint = dialog.sizeHint()
+            target_w = min(max(default_width, hint.width()), max_width)
+            target_h = min(max(default_height, hint.height()), max_height)
+            target_w = max(target_w, min_width)
+            target_h = max(target_h, min_height)
+            dialog.resize(target_w, target_h)
+
             # Show dialog
             dialog.show()
             dialog.raise_()
@@ -8140,6 +8185,14 @@ class AffinityInstallerGUI(QMainWindow):
         button_layout.addWidget(ok_btn)
 
         main_layout.addLayout(button_layout)
+
+        # Ensure the dialog is large enough to show all content; clamp inside min/max.
+        hint = dialog.sizeHint()
+        target_w = min(max(default_width, hint.width()), max_width)
+        target_h = min(max(default_height, hint.height()), max_height)
+        target_w = max(target_w, min_width)
+        target_h = max(target_h, min_height)
+        dialog.resize(target_w, target_h)
 
         # Show dialog
         dialog.show()
@@ -16102,6 +16155,14 @@ Would you like to continue with {distro_name} anyway?"""
 
         main_layout.addLayout(button_layout)
 
+        # Ensure the dialog is large enough to show all content; clamp inside min/max.
+        hint = dialog.sizeHint()
+        target_w = min(max(default_width, hint.width()), max_width)
+        target_h = min(max(default_height, hint.height()), max_height)
+        target_w = max(target_w, min_width)
+        target_h = max(target_h, min_height)
+        dialog.resize(target_w, target_h)
+
         if dialog.exec() != QDialog.DialogCode.Accepted:
             self.log("Renderer configuration cancelled", "warning")
             self.end_operation()
@@ -18194,6 +18255,7 @@ Would you like to continue with {distro_name} anyway?"""
             "Jediclank134"
         )
         thanks.setStandardButtons(QMessageBox.StandardButton.Ok)
+        thanks.adjustSize()
         thanks.exec()
 
 
