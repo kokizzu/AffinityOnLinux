@@ -340,6 +340,7 @@ class AffinityInstallerGUI(QMainWindow):
         self.distro = None
         self.distro_version = None
         self.directory = str(Path.home() / ".AffinityLinux")
+        self._load_persisted_install_location()
         self.setup_complete = False
         self.installer_file = None
         self.update_buttons = {}
@@ -3885,7 +3886,11 @@ class AffinityInstallerGUI(QMainWindow):
     def get_wine_tkg_for_installer(self, binary="wine"):
         """Get wine-tkg binary path for running installers, fallback to regular wine or wine-staging if not available"""
         wine_tkg_bin = self.get_wine_tkg_path(binary)
-        if wine_tkg_bin and wine_tkg_bin.exists():
+        if (
+            wine_tkg_bin
+            and wine_tkg_bin.exists()
+            and self._wine_binary_is_functional(wine_tkg_bin)
+        ):
             return str(wine_tkg_bin)
 
         # Fallback to regular wine
@@ -3898,8 +3903,55 @@ class AffinityInstallerGUI(QMainWindow):
         if wine_staging_bin.exists():
             return str(wine_staging_bin)
 
-        # Ultimate fallback
+        # Ultimate fallback: distro/system-installed wine, if present on PATH
+        system_wine = shutil.which(binary)
+        if system_wine:
+            return system_wine
+
         return str(wine_bin)
+
+    def _wine_binary_is_functional(self, wine_bin):
+        """Run a quick smoke test (`wine --version`) to verify a Wine binary
+        actually runs, rather than just checking that the file exists on disk.
+        A wine-tkg download can be present but still fail at runtime — e.g. a
+        corrupted archive, an incompatible glibc, or missing shared libraries —
+        and an exists() check alone won't catch that."""
+        try:
+            result = subprocess.run(
+                [str(wine_bin), "--version"],
+                capture_output=True,
+                timeout=15,
+            )
+            return result.returncode == 0
+        except Exception as e:
+            self.log(f"wine-tkg smoke test failed for {wine_bin}: {e}", "warning")
+            return False
+
+    def _pin_system_wine_in_env(self, env):
+        """Explicitly locate the distro-installed system wine and put it at the
+        front of PATH, rather than silently hoping whatever wine happens to be
+        inherited in the environment is a working one. Used as the fallback
+        when wine-tkg is missing or fails its functional check."""
+        system_wine = shutil.which("wine", path=env.get("PATH"))
+        if not system_wine:
+            for candidate in ("/usr/bin/wine", "/usr/local/bin/wine", "/bin/wine"):
+                if Path(candidate).exists():
+                    system_wine = candidate
+                    break
+
+        if system_wine:
+            self.log(f"Using system wine: {system_wine}", "info")
+            system_wine_dir = str(Path(system_wine).parent)
+            current_path = env.get("PATH", "")
+            env["PATH"] = f"{system_wine_dir}:{current_path}"
+        else:
+            self.log(
+                "✗ No working wine-tkg and no system wine found either — "
+                "winetricks will likely fail. Please install your distro's "
+                "'wine' package.",
+                "error",
+            )
+        return env
 
     def get_wine_tkg_dir(self):
         """Get the wine-tkg directory path"""
@@ -4574,21 +4626,31 @@ class AffinityInstallerGUI(QMainWindow):
         wine_tkg_bin = self.get_wine_tkg_path("wine")
         self.log(f"DEBUG: get_wine_tkg_path() returned: {wine_tkg_bin}", "info")
 
+        wine_tkg_usable = False
         if wine_tkg_bin:
             self.log(f"DEBUG: wine-tkg binary path: {wine_tkg_bin}", "info")
             self.log(f"DEBUG: wine-tkg binary exists: {wine_tkg_bin.exists()}", "info")
 
             if wine_tkg_bin.exists():
-                # Add wine-tkg bin directory to PATH so winetricks uses it
-                wine_tkg_bin_dir = wine_tkg_bin.parent
-                current_path = env.get("PATH", "")
-                env["PATH"] = f"{wine_tkg_bin_dir}:{current_path}"
-                self.log(f"DEBUG: ✓ Using wine-tkg from: {wine_tkg_bin_dir}", "info")
-                self.log(
-                    f"DEBUG: Updated PATH (first 200 chars): {env['PATH'][:200]}",
-                    "info",
-                )
-                self.log(f"Using wine-tkg from: {wine_tkg_bin_dir}", "info")
+                # Don't just trust that the file existing means it works — a
+                # corrupted download or a build incompatible with this host
+                # can still pass an exists() check but fail to actually run.
+                if self._wine_binary_is_functional(wine_tkg_bin):
+                    wine_tkg_bin_dir = wine_tkg_bin.parent
+                    current_path = env.get("PATH", "")
+                    env["PATH"] = f"{wine_tkg_bin_dir}:{current_path}"
+                    wine_tkg_usable = True
+                    self.log(f"DEBUG: ✓ Using wine-tkg from: {wine_tkg_bin_dir}", "info")
+                    self.log(
+                        f"DEBUG: Updated PATH (first 200 chars): {env['PATH'][:200]}",
+                        "info",
+                    )
+                    self.log(f"Using wine-tkg from: {wine_tkg_bin_dir}", "info")
+                else:
+                    self.log(
+                        "wine-tkg is present but failed to run — falling back to system wine",
+                        "warning",
+                    )
             else:
                 error_msg = "wine-tkg binary path returned but file does not exist"
                 self.log(f"DEBUG: ✗ ERROR: {error_msg}", "error")
@@ -4597,6 +4659,9 @@ class AffinityInstallerGUI(QMainWindow):
         else:
             self.log("DEBUG: ✗ wine-tkg binary not found", "info")
             self.log("wine-tkg not found, using system wine", "warning")
+
+        if not wine_tkg_usable:
+            env = self._pin_system_wine_in_env(env)
 
         # ── Speed optimisations ───────────────────────────────────────────────
         # Suppress Wine debug output - major speedup per wineserver invocation
@@ -7211,8 +7276,79 @@ class AffinityInstallerGUI(QMainWindow):
         self.update_progress(1.0)
         self.show_main_menu_signal.emit()
 
+    def _install_location_config_file(self):
+        """Path to the small file that remembers a custom install location
+        across app restarts. Stored outside the wine prefix itself (it can't
+        live inside self.directory — that's the very thing it needs to
+        remember)."""
+        return Path.home() / ".config" / "AffinityOnLinux" / "install_location"
+
+    def _load_persisted_install_location(self):
+        """Restore a previously-chosen custom install location, if any, so
+        features like Uninstall, Launch, and Update keep working against the
+        right folder across app restarts. Falls back silently to the default
+        ~/.AffinityLinux if nothing was saved or the saved value looks bad."""
+        try:
+            config_file = self._install_location_config_file()
+            if config_file.exists():
+                saved = config_file.read_text().strip()
+                if saved:
+                    self.directory = saved
+        except Exception:
+            pass
+
+    def _save_install_location(self, directory):
+        """Persist the chosen install location so it survives app restarts."""
+        try:
+            config_file = self._install_location_config_file()
+            config_file.parent.mkdir(parents=True, exist_ok=True)
+            config_file.write_text(str(directory))
+        except Exception as e:
+            self.log(f"Warning: could not save install location preference: {e}", "warning")
+
+    def _clear_persisted_install_location(self):
+        """Forget a saved custom install location (called after uninstall so
+        a later run doesn't keep pointing at a folder that no longer exists)."""
+        try:
+            config_file = self._install_location_config_file()
+            if config_file.exists():
+                config_file.unlink()
+        except Exception:
+            pass
+
     def one_click_setup(self):
         """One-click full setup: detects distro, installs deps, sets up Wine, installs Winetricks deps"""
+        # Ask up front whether the user wants to install somewhere other than
+        # the default location, before anything else happens.
+        location_reply = QMessageBox.question(
+            self,
+            "Custom Install Location",
+            "Do you want to choose a custom install location?\n\n"
+            f"Default location:\n{self.directory}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+
+        if location_reply == QMessageBox.StandardButton.Yes:
+            chosen_dir = QFileDialog.getExistingDirectory(
+                self,
+                "Select Install Location",
+                str(Path.home()),
+                QFileDialog.Option.ShowDirsOnly,
+            )
+            if chosen_dir:
+                # Install into a dedicated subfolder rather than dumping the
+                # Wine prefix (drive_c, dosdevices, etc.) directly into
+                # whatever folder the user picked.
+                self.directory = str(Path(chosen_dir) / ".AffinityLinux")
+                self._save_install_location(self.directory)
+                self.log(f"Custom install location selected: {self.directory}", "info")
+            else:
+                self.log(
+                    "No custom location selected — using default install location.",
+                    "info",
+                )
+
         self.log(
             "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         )
@@ -7220,6 +7356,7 @@ class AffinityInstallerGUI(QMainWindow):
         self.log(
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         )
+        self.log(f"Install location: {self.directory}", "info")
         self.log("This will automatically:", "info")
         self.log("  1. Detect your Linux distribution", "info")
         self.log("  2. Check and install system dependencies", "info")
@@ -8354,12 +8491,10 @@ class AffinityInstallerGUI(QMainWindow):
                 "winetricks",
                 "wget",
                 "curl",
-                "p7zip",
+                "7zip",
                 "tar",
                 "jq",
                 "zstd",
-                "dotnet-sdk-8.0",
-                "dotnet-sdk-10.0",
             ],
             "opensuse-leap": [
                 "sudo",
@@ -8370,12 +8505,10 @@ class AffinityInstallerGUI(QMainWindow):
                 "winetricks",
                 "wget",
                 "curl",
-                "p7zip",
+                "7zip",
                 "tar",
                 "jq",
                 "zstd",
-                "dotnet-sdk-8.0",
-                "dotnet-sdk-10.0",
             ],
         }
 
@@ -8394,6 +8527,32 @@ class AffinityInstallerGUI(QMainWindow):
                 self.update_progress(1.0)
                 self.update_progress_text("Dependencies installed")
                 self.log("Dependencies installed successfully", "success")
+
+                # .NET SDK packages are installed separately (best-effort) on
+                # openSUSE: zypper resolves the whole transaction as one unit,
+                # so if dotnet-sdk-8.0 becomes temporarily unsatisfiable in the
+                # repos (this has happened on Tumbleweed), bundling it with
+                # wine/winetricks/etc would fail the ENTIRE dependency install
+                # and leave the user stuck. The dedicated .NET SDK check/install
+                # logic elsewhere in this installer already handles detecting
+                # and installing whichever SDK is actually available.
+                if self.distro in ("opensuse-tumbleweed", "opensuse-leap"):
+                    self.log("Installing .NET SDK packages...", "info")
+                    for dotnet_pkg in ("dotnet-sdk-10.0", "dotnet-sdk-8.0"):
+                        dotnet_success, _, dotnet_stderr = self.run_command(
+                            ["sudo", "zypper", "install", "-y", dotnet_pkg],
+                            check=False,
+                        )
+                        if dotnet_success:
+                            self.log(f"  ✓ {dotnet_pkg} installed", "success")
+                        else:
+                            self.log(
+                                f"  ⚠ {dotnet_pkg} could not be installed — "
+                                "will be retried automatically later if needed: "
+                                f"{dotnet_stderr}",
+                                "warning",
+                            )
+
                 return True
             else:
                 self.log(f"Failed to install dependencies: {stderr}", "error")
@@ -16788,7 +16947,7 @@ Would you like to continue with {distro_name} anyway?"""
             )
 
     def uninstall_affinity_linux(self):
-        """Uninstall Affinity Linux by deleting the .AffinityLinux folder"""
+        """Uninstall Affinity Linux by deleting the install directory (self.directory) — this may be the default ~/.AffinityLinux or a custom location"""
         self.log(
             "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         )
@@ -16801,7 +16960,7 @@ Would you like to continue with {distro_name} anyway?"""
         reply = QMessageBox.warning(
             self,
             "Uninstall Affinity Linux",
-            "WARNING: This will permanently delete the .AffinityLinux folder and all its contents.\n\n"
+            f"WARNING: This will permanently delete the following folder and all its contents:\n{self.directory}\n\n"
             "This includes:\n"
             "• All Wine configuration and settings\n"
             "• All installed Affinity applications (Photo, Designer, Publisher, Unified)\n"
@@ -16876,15 +17035,16 @@ Would you like to continue with {distro_name} anyway?"""
         if removed_count > 0:
             self.log(f"Removed {removed_count} desktop entry/entries", "success")
 
-        # Delete the .AffinityLinux folder
+        # Delete the install directory (default or custom location)
         affinity_dir = Path(self.directory)
         if not affinity_dir.exists():
             self.log(
-                "Affinity Linux directory not found. Nothing to uninstall.", "warning"
+                f"Affinity Linux directory not found at {affinity_dir}. Nothing to uninstall.",
+                "warning",
             )
             self.show_message(
                 "Nothing to Uninstall",
-                "The .AffinityLinux folder does not exist.\n\nNothing to uninstall.",
+                f"The install folder does not exist:\n{affinity_dir}\n\nNothing to uninstall.",
                 "info",
             )
             return
@@ -16913,13 +17073,20 @@ Would you like to continue with {distro_name} anyway?"""
                 if result.returncode != 0:
                     raise Exception(f"rm -rf failed: {result.stderr.strip()}")
 
-            self.log("\u2713 .AffinityLinux folder deleted successfully", "success")
+            self.log(f"\u2713 {affinity_dir} deleted successfully", "success")
             self.log("\n✓ Uninstall completed!", "success")
             self.log("All Affinity Linux files have been removed.", "info")
 
+            deleted_path = str(affinity_dir)
+
+            # Forget any custom install location — it no longer exists, so a
+            # future launch should fall back to the default ~/.AffinityLinux.
+            self._clear_persisted_install_location()
+            self.directory = str(Path.home() / ".AffinityLinux")
+
             self.show_message(
                 "Uninstall Complete",
-                "The .AffinityLinux folder has been successfully deleted.\n\n"
+                f"{deleted_path} has been successfully deleted.\n\n"
                 "All Affinity installations and configurations have been removed.\n\n"
                 "You may close this installer now.",
                 "info",
@@ -16941,7 +17108,7 @@ Would you like to continue with {distro_name} anyway?"""
             self.log(f"✗ Failed to delete directory: {e}", "error")
             self.show_message(
                 "Uninstall Failed",
-                f"Failed to delete the .AffinityLinux folder:\n\n{str(e)}\n\n"
+                f"Failed to delete {affinity_dir}:\n\n{str(e)}\n\n"
                 "You may need to manually delete it.",
                 "error",
             )
