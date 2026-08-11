@@ -10,15 +10,7 @@ The packages below are the system dependencies the Affinity installer needs. The
 - Copy and paste the commands one block at a time, then press Enter.
 - If a command asks for confirmation, type `y` and press Enter.
 
-## Step 1: Update Your System (Recommended)
-
-Run this first so your package lists are current:
-
-```bash
-sudo dnf upgrade
-```
-
-## Step 2: Install the Dependencies
+## Step 1: Install the Dependencies
 
 ```bash
 sudo dnf install wine winetricks wget curl p7zip p7zip-plugins tar jq zstd \
@@ -37,7 +29,7 @@ What these packages do:
 | `dotnet-sdk-8.0`, `dotnet-sdk-10.0` | Build the patcher the installer uses |
 | `python3-pyqt6`, `python3-pyqt6-svg` | The graphical interface of the installer |
 
-## Step 3: Verify the Installation
+## Step 2: Verify the Installation
 
 ```bash
 which wine winetricks wget curl tar jq zstd
@@ -50,7 +42,6 @@ dotnet --list-sdks
 
 ## Troubleshooting
 
-- If a package is not found, run `sudo dnf upgrade`, then run Step 2 again.
 - If the .NET SDK packages are not available in your repositories, you may need to enable Microsoft's repository first. See https://dotnet.microsoft.com/download
 - If the installer still reports a missing dependency, close it and reopen it, then click "One-Click Full Setup" again.
 
