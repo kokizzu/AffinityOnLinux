@@ -6246,7 +6246,9 @@ class AffinityInstallerGUI(QMainWindow):
 
             for line in content.split("\n"):
                 if line.startswith("ID="):
-                    self.distro = line.split("=", 1)[1].strip().strip('"')
+                    self.distro = (
+                        line.split("=", 1)[1].strip().strip('"').lower()
+                    )
                 elif line.startswith("VERSION_ID="):
                     self.distro_version = line.split("=", 1)[1].strip().strip('"')
 

@@ -118,7 +118,7 @@ download_file() {
 detect_distro() {
     if [ -f /etc/os-release ]; then
         . /etc/os-release
-        DISTRO=$ID
+        DISTRO=$(echo "$ID" | tr '[:upper:]' '[:lower:]')
         VERSION=$VERSION_ID
         # Normalize "pika" to "pikaos" if detected
         if [ "$DISTRO" = "pika" ]; then

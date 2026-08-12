@@ -138,7 +138,7 @@ check_wine_version() {
 detect_distro() {
     if [ -f /etc/os-release ]; then
         . /etc/os-release
-        echo "$ID"
+        echo "$ID" | tr '[:upper:]' '[:lower:]'
     else
         echo "unknown"
     fi
