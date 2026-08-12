@@ -353,6 +353,7 @@ class AffinityInstallerGUI(QMainWindow):
         self.operation_in_progress = False
         self.sudo_password = None
         self.sudo_password_validated = False
+        self.sudo_password_dialog_done = True
         self.interactive_response = None
         self.waiting_for_response = False
         self.question_dialog_response = None
@@ -3622,6 +3623,7 @@ class AffinityInstallerGUI(QMainWindow):
             self.sudo_password = password_input.text()
         else:
             self.sudo_password = None
+        self.sudo_password_dialog_done = True
 
     def get_sudo_password(self):
         """Get sudo password from user (thread-safe)"""
@@ -3629,13 +3631,20 @@ class AffinityInstallerGUI(QMainWindow):
             return self.sudo_password
 
         self.sudo_password = None
+        self.sudo_password_dialog_done = False
         self.sudo_password_dialog_signal.emit()
 
-        max_wait = 300
+        # Wait for the dialog to actually finish instead of giving up after a
+        # fixed timeout. Aborting here while the dialog is still on screen
+        # would report a correctly entered password as "authentication
+        # cancelled" and could leave a second dialog open on retry.
+        max_wait = 6000
         waited = 0
-        while self.sudo_password is None and waited < max_wait:
+        while not self.sudo_password_dialog_done and waited < max_wait:
             time.sleep(0.1)
             waited += 1
+            if self.cancel_event.is_set():
+                break
 
         return self.sudo_password
 
@@ -3644,6 +3653,8 @@ class AffinityInstallerGUI(QMainWindow):
         try:
             env = os.environ.copy()
             env.pop("SUDO_ASKPASS", None)
+            env["LANG"] = "C"
+            env["LC_ALL"] = "C"
 
             process = subprocess.Popen(
                 ["sudo", "-S", "true"],
@@ -3703,11 +3714,21 @@ class AffinityInstallerGUI(QMainWindow):
                 # Check stderr for more details
                 if stderr:
                     error_msg = stderr.strip()
-                    if (
-                        "incorrect password" in error_msg.lower()
-                        or "sorry" in error_msg.lower()
-                    ):
+                    error_lower = error_msg.lower()
+                    if "incorrect password" in error_lower or "sorry, try again" in error_lower:
                         self.log("Incorrect password", "error")
+                    elif "tty" in error_lower or "terminal" in error_lower:
+                        self.log(
+                            "Password rejected by sudo because a terminal is "
+                            f"required on this system: {error_msg}",
+                            "error",
+                        )
+                    elif "no askpass" in error_lower or "no password" in error_lower:
+                        self.log(
+                            "Sudo could not authenticate without a password prompt "
+                            f"helper: {error_msg}",
+                            "error",
+                        )
                     else:
                         self.log(f"Password validation failed: {error_msg}", "error")
                 else:
@@ -6085,11 +6106,10 @@ class AffinityInstallerGUI(QMainWindow):
                 # Create a copy to avoid modifying the original
                 command = list(command)
                 if len(command) > 1:
+                    # Only add -S if it's not already in position 1 (right after
+                    # sudo). Don't remove -S flags that belong to the actual
+                    # command (like pacman -S).
                     if command[1] != "-S":
-                        # Remove -S if it exists elsewhere (safely)
-                        while "-S" in command:
-                            command.remove("-S")
-                        # Insert -S right after "sudo"
                         command.insert(1, "-S")
                 else:
                     # Only "sudo" in command, add -S
