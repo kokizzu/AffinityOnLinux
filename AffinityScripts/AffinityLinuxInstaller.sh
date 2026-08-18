@@ -392,6 +392,21 @@ install_dependencies() {
             ;;
         "fedora"|"nobara")
             sudo dnf install -y wine winetricks wget curl p7zip p7zip-plugins tar jq zstd
+            # Install msttcore-fonts to fix font rendering bug with Affinity
+            local msttcore_rpm="/tmp/msttcore-fonts-installer-2.6-1.noarch.rpm"
+            local msttcore_url="https://github.com/isboston/msttcore-fonts/releases/download/fonts/msttcore-fonts-installer-2.6-1.noarch.rpm"
+            print_step "Downloading msttcore-fonts to fix font rendering bug..."
+            if download_file "$msttcore_url" "$msttcore_rpm" "msttcore-fonts"; then
+                print_step "Installing msttcore-fonts..."
+                if sudo dnf install -y "$msttcore_rpm"; then
+                    print_success "msttcore-fonts installed successfully"
+                else
+                    print_warning "Failed to install msttcore-fonts (may already be installed)"
+                fi
+                rm -f "$msttcore_rpm"
+            else
+                print_warning "Failed to download msttcore-fonts (font rendering may have issues)"
+            fi
             ;;
         "opensuse-tumbleweed"|"opensuse-leap")
             sudo zypper install -y wine winetricks wget curl p7zip tar jq zstd

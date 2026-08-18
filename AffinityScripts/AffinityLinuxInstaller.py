@@ -9248,6 +9248,39 @@ class AffinityInstallerGUI(QMainWindow):
                                 "warning",
                             )
 
+                # Install msttcore-fonts to fix font rendering bug with Affinity
+                if self.distro in ("fedora", "nobara"):
+                    msttcore_rpm = "/tmp/msttcore-fonts-installer-2.6-1.noarch.rpm"
+                    msttcore_url = "https://github.com/isboston/msttcore-fonts/releases/download/fonts/msttcore-fonts-installer-2.6-1.noarch.rpm"
+                    self.log(
+                        "Downloading msttcore-fonts to fix font rendering bug...",
+                        "info",
+                    )
+                    if self.download_file(msttcore_url, msttcore_rpm, "msttcore-fonts"):
+                        self.log("Installing msttcore-fonts...", "info")
+                        rpm_success, _, rpm_stderr = self.run_command(
+                            ["sudo", "dnf", "install", "-y", msttcore_rpm],
+                            check=False,
+                        )
+                        if rpm_success:
+                            self.log("  ✓ msttcore-fonts installed", "success")
+                        else:
+                            self.log(
+                                f"  ⚠ msttcore-fonts could not be installed "
+                                f"(may already be installed): {rpm_stderr}",
+                                "warning",
+                            )
+                        try:
+                            os.remove(msttcore_rpm)
+                        except OSError:
+                            pass
+                    else:
+                        self.log(
+                            "  ⚠ Failed to download msttcore-fonts "
+                            "(font rendering may have issues)",
+                            "warning",
+                        )
+
                 return True
             else:
                 self.log(f"Failed to install dependencies: {stderr}", "error")
